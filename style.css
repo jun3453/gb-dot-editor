@@ -365,6 +365,7 @@ input:checked + .slider:before {
   justify-content: center;
   padding: 24px;
   overflow: auto;
+  position: relative; /* Floating controls anchor */
 }
 
 .canvas-container {
@@ -377,6 +378,33 @@ input:checked + .slider:before {
   border: 2px solid var(--border-color);
   padding: 8px;
   display: inline-block;
+  width: var(--canvas-display-width, 512px);
+  height: var(--canvas-display-height, 512px);
+  box-sizing: content-box;
+}
+
+/* Fit to screen mode */
+.canvas-wrapper.fit-mode {
+  overflow: hidden;
+}
+
+.canvas-wrapper.fit-mode .canvas-container {
+  width: auto;
+  height: auto;
+  max-width: calc(100% - 16px);
+  max-height: calc(100% - 16px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+}
+
+.canvas-wrapper.fit-mode #editor-canvas {
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
 }
 
 #editor-canvas {
@@ -386,6 +414,22 @@ input:checked + .slider:before {
   background-color: #000;
   border-radius: 0;
   transition: border-color 0.3s;
+  width: 100%;
+  height: 100%;
+}
+
+/* Drag to scroll (Panning) styles */
+.canvas-wrapper.panning {
+  cursor: grab !important;
+}
+.canvas-wrapper.panning:active {
+  cursor: grabbing !important;
+}
+.canvas-wrapper.panning #editor-canvas {
+  cursor: grab !important;
+}
+.canvas-wrapper.panning #editor-canvas:active {
+  cursor: grabbing !important;
 }
 
 /* Timeline Panel */
@@ -465,6 +509,17 @@ input:checked + .slider:before {
   border-color: var(--accent-color);
   box-shadow: 0 0 10px var(--accent-glow);
   background: rgba(16, 185, 129, 0.05);
+}
+
+.frame-item.dragging {
+  opacity: 0.5;
+  border-style: dashed;
+}
+
+.frame-item.drag-over {
+  border-color: var(--accent-color) !important;
+  transform: scale(1.05) translateY(-4px);
+  box-shadow: 0 0 15px var(--accent-glow);
 }
 
 .frame-item canvas {
@@ -957,3 +1012,147 @@ input:checked + .slider:before {
 ::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.2);
 }
+
+/* Panel Collapsed / Toggled state */
+.tools-panel.collapsed {
+  display: none !important;
+}
+.sidebar-panel.collapsed {
+  display: none !important;
+}
+.timeline-panel.collapsed {
+  display: none !important;
+}
+
+/* Resizer Handles */
+.resizer {
+  width: 6px;
+  background: transparent;
+  cursor: col-resize;
+  z-index: 10;
+  position: relative;
+  user-select: none;
+  flex-shrink: 0;
+}
+.resizer::after {
+  content: '';
+  position: absolute;
+  top: 0; left: 2px; right: 2px; bottom: 0;
+  background: var(--border-color);
+  transition: background 0.2s;
+}
+.resizer:hover::after, .resizer.dragging::after {
+  background: var(--accent-color);
+  box-shadow: 0 0 8px var(--accent-glow);
+}
+
+/* Layout controls (header) */
+.layout-controls {
+  display: flex;
+  gap: 8px;
+}
+.layout-controls .btn-icon.active {
+  background: rgba(16, 185, 129, 0.15);
+  border-color: var(--accent-color);
+  color: var(--accent-color);
+  box-shadow: 0 0 10px var(--accent-glow);
+}
+
+/* Floating Zoom Controls */
+.canvas-zoom-controls {
+  position: absolute;
+  bottom: 16px;
+  right: 16px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(15, 23, 42, 0.75);
+  backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  padding: 6px 10px;
+  border-radius: 30px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+  z-index: 100;
+  user-select: none;
+}
+
+.btn-zoom-action {
+  background: transparent;
+  border: none;
+  color: var(--text-main);
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: bold;
+  transition: background 0.2s, color 0.2s;
+}
+
+.btn-zoom-action:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.btn-zoom-action.active {
+  background: var(--accent-color);
+  color: #0b0f19;
+}
+
+#zoom-level-text {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  min-width: 80px;
+  text-align: center;
+  color: var(--text-muted);
+}
+
+/* --- Brush & Tool Settings --- */
+.brush-setting-item {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.setting-label {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-weight: 500;
+}
+
+.brush-size-selector, .dither-pattern-selector, .shade-mode-selector {
+  display: flex;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 2px;
+  gap: 2px;
+}
+
+.btn-size-opt, .btn-pattern-opt, .btn-shade-opt {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  color: var(--text-muted);
+  padding: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-align: center;
+}
+
+.btn-size-opt:hover, .btn-pattern-opt:hover, .btn-shade-opt:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.btn-size-opt.active, .btn-pattern-opt.active, .btn-shade-opt.active {
+  background: var(--accent-color);
+  color: #ffffff;
+  box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
+}
+
