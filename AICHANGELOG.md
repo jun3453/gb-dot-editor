@@ -1,6 +1,18 @@
 # GBDotEditor 変更履歴 (AI CHANGELOG)
 
 ## 2026-06-19
+### ドキュメント作成: README.md の新規作成とGitHub連携対応
+
+#### 変更内容
+- **Before**: `README.md` が存在しない状態。
+- **After**: リポジトリルートに [README.md](file:///Users/junki/Desktop/GBDotEditor/README.md) を新規作成。
+
+#### 変更理由
+- プロジェクトのGitHub連携に伴い、リポジトリのトップページでツールの機能、使い方、および技術仕様（Game Boy 2bppフォーマット等）を明確に説明するため。
+
+#### 影響範囲
+- ドキュメントファイルの追加のみで、エディタ本体のコードや動作には影響しません。
+
 ### 新規実装: ゲームボーイ向けドット絵作成ツール (GBDotEditor) の構築
 
 ユーザーの要件に基づき、Gameboy Tile Designerの使いづらさを改善したWebベースのドット絵/アニメーションエディタを新規に構築しました。
