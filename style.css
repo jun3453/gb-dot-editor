@@ -1156,3 +1156,174 @@ input:checked + .slider:before {
   box-shadow: 0 2px 4px rgba(16, 185, 129, 0.2);
 }
 
+/* --- Mode Selector Header --- */
+.editor-mode-selector {
+  display: flex;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.2);
+  padding: 4px;
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  margin-left: 20px;
+}
+.btn-mode {
+  background: transparent;
+  border: none;
+  color: #aaa;
+  padding: 6px 14px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.btn-mode:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.05);
+}
+.btn-mode.active {
+  color: #fff;
+  background: #10b981;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+/* --- Tileset Grid --- */
+.tileset-grid-container {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  padding: 8px;
+  background: rgba(0, 0, 0, 0.2);
+  border-radius: 8px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+.tileset-item {
+  aspect-ratio: 1;
+  background: #0f172a;
+  border: 2px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  image-rendering: pixelated;
+  position: relative;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+.tileset-item:hover {
+  border-color: rgba(16, 185, 129, 0.5);
+}
+.tileset-item.active {
+  border-color: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+.tileset-item canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.tileset-item-label {
+  position: absolute;
+  bottom: 0;
+  right: 0;
+  background: rgba(15, 23, 42, 0.85);
+  color: #fff;
+  font-size: 8px;
+  font-family: monospace;
+  padding: 1px 3px;
+  border-top-left-radius: 4px;
+  border-bottom-right-radius: 4px;
+}
+
+/* --- Metasprite Parts layer list --- */
+.metasprite-part-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.02);
+  padding: 6px 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.metasprite-part-item:hover {
+  background: rgba(255, 255, 255, 0.05);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+.metasprite-part-item.active {
+  background: rgba(16, 185, 129, 0.08);
+  border-color: #10b981;
+}
+.part-thumbnail {
+  width: 24px;
+  height: 24px;
+  background: #0f172a;
+  border-radius: 4px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+  image-rendering: pixelated;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.part-thumbnail canvas {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.part-info {
+  flex: 1;
+  font-size: 11px;
+  color: #ddd;
+  font-family: 'Share Tech Mono', monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.part-controls {
+  display: flex;
+  gap: 2px;
+}
+.btn-part-action {
+  background: transparent;
+  border: none;
+  color: #888;
+  cursor: pointer;
+  width: 20px;
+  height: 20px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
+}
+.btn-part-action:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+.btn-part-action.delete:hover {
+  color: #ef4444;
+  background: rgba(239, 68, 68, 0.15);
+}
+
+/* --- GBC Palette styling --- */
+.gbc-only {
+  display: none;
+}
+#gbc-palette-select {
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23ffffff' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 14px;
+  padding-right: 30px !important;
+  appearance: none;
+  -webkit-appearance: none;
+}
+
+

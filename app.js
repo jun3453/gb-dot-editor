@@ -94,6 +94,28 @@ let dragStartY = 0;
 let originalFloatingX = 0;
 let originalFloatingY = 0;
 
+// --- Custom Features & Workspace Mode States ---
+let activeMode = 'pixel'; // 'pixel', 'tilemap', 'metasprite'
+let showSeamless = false;
+let showPreviewTiling = false;
+let isGbcMode = false;
+let gbcPalettes = Array.from({length: 8}, () => ['#ffffff', '#aaaaaa', '#555555', '#000000']);
+let currentGbcPaletteIndex = 0;
+
+// Tilemap Editor State
+let tilemapWidth = 20;
+let tilemapHeight = 18;
+let tilemapData = new Uint8Array(20 * 18); // Default 0
+let selectedTilemapTile = 0;
+let activeTilemapTool = 'stamp'; // 'stamp', 'eraser', 'fill'
+let tileSet = []; // Array of Uint8Array (64 bytes) for 8x8 tiles
+
+// Metasprite Editor State
+let metaspriteParts = []; // Array of { id, tileIndex, x, y, xFlip, yFlip, palette }
+let activeMetaspritePartId = null;
+let metasprite8x16 = false;
+let selectedMetaspriteTile = 0;
+
 // Offscreen canvas for preview rendering
 let previewTempCanvas = null;
 
@@ -117,6 +139,61 @@ const previewCtx = previewCanvas.getContext('2d');
 const selectSize = document.getElementById('canvas-size-select');
 const btnUndo = document.getElementById('btn-undo');
 const btnRedo = document.getElementById('btn-redo');
+
+// Mode Tabs
+const modePixelBtn = document.getElementById('mode-pixel');
+const modeTilemapBtn = document.getElementById('mode-tilemap');
+const modeMetaspriteBtn = document.getElementById('mode-metasprite');
+const workspacePixel = document.getElementById('workspace-pixel');
+const workspaceTilemap = document.getElementById('workspace-tilemap');
+const workspaceMetasprite = document.getElementById('workspace-metasprite');
+
+// Seamless & Tiling Preview
+const chkSeamlessDraw = document.getElementById('chk-seamless-draw');
+const chkPreviewTiling = document.getElementById('chk-preview-tiling');
+
+// GBC Palette UI
+const chkGbcMode = document.getElementById('chk-gbc-mode');
+const monoPaletteSelector = document.getElementById('mono-palette-selector');
+const gbcPaletteSelector = document.getElementById('gbc-palette-selector');
+const gbcPaletteSelect = document.getElementById('gbc-palette-select');
+const gbcColorEditor = document.getElementById('gbc-color-editor');
+const gbcColorPicker = document.getElementById('gbc-color-picker');
+
+// Tilemap UI
+const tilemapCanvas = document.getElementById('tilemap-canvas');
+const tilemapCtx = tilemapCanvas ? tilemapCanvas.getContext('2d') : null;
+const tilemapToolStamp = document.getElementById('tilemap-tool-stamp');
+const tilemapToolEraser = document.getElementById('tilemap-tool-eraser');
+const tilemapToolFill = document.getElementById('tilemap-tool-fill');
+const btnRefreshTileset = document.getElementById('btn-refresh-tileset');
+const tilemapTilesetList = document.getElementById('tilemap-tileset-list');
+const tilemapWidthInput = document.getElementById('tilemap-width-input');
+const tilemapHeightInput = document.getElementById('tilemap-height-input');
+const btnResizeTilemap = document.getElementById('btn-resize-tilemap');
+const chkTilemapGrid = document.getElementById('chk-tilemap-grid');
+const tilemapCodeIo = document.getElementById('tilemap-code-io');
+const btnTilemapImportC = document.getElementById('btn-tilemap-import-c');
+const btnTilemapExportC = document.getElementById('btn-tilemap-export-c');
+const tilemapCursorCoord = document.getElementById('tilemap-cursor-coord');
+
+// Metasprite UI
+const metaspriteCanvas = document.getElementById('metasprite-canvas');
+const metaspriteCtx = metaspriteCanvas ? metaspriteCanvas.getContext('2d') : null;
+const btnMetaspriteAddPart = document.getElementById('btn-metasprite-add-part');
+const chkMetaspriteSize8x16 = document.getElementById('chk-metasprite-size8x16');
+const metaspriteTilesetList = document.getElementById('metasprite-tileset-list');
+const metaspritePartsList = document.getElementById('metasprite-parts-list');
+const metaspritePartProperties = document.getElementById('metasprite-part-properties');
+const metaspritePartX = document.getElementById('metasprite-part-x');
+const metaspritePartY = document.getElementById('metasprite-part-y');
+const metaspritePartHFlip = document.getElementById('metasprite-part-hflip');
+const metaspritePartVFlip = document.getElementById('metasprite-part-vflip');
+const metaspritePartPalette = document.getElementById('metasprite-part-palette');
+const metaspriteCodeIo = document.getElementById('metasprite-code-io');
+const btnMetaspriteImportC = document.getElementById('btn-metasprite-import-c');
+const btnMetaspriteExportC = document.getElementById('btn-metasprite-export-c');
+
 
 const toolPen = document.getElementById('tool-pen');
 const toolEraser = document.getElementById('tool-eraser');
@@ -187,8 +264,8 @@ const toolsPanel = document.querySelector('.tools-panel');
 const sidebarPanel = document.querySelector('.sidebar-panel');
 const timelinePanel = document.querySelector('.timeline-panel');
 const workspace = document.querySelector('.workspace');
-const canvasWrapper = document.querySelector('.canvas-wrapper');
-const canvasContainer = document.querySelector('.canvas-container');
+const canvasWrapper = document.getElementById('editor-canvas-wrapper');
+const canvasContainer = document.getElementById('editor-canvas-container');
 
 const btnToggleTools = document.getElementById('btn-toggle-tools');
 const btnToggleTimeline = document.getElementById('btn-toggle-timeline');
@@ -333,7 +410,7 @@ function drawMainCanvas() {
   const currentFrame = frames[currentFrameIndex];
   if (!currentFrame) return;
   
-  const colors = PALETTE_THEMES[activeTheme];
+  const colors = isGbcMode ? gbcPalettes[currentGbcPaletteIndex] : PALETTE_THEMES[activeTheme];
   
   // 1. Draw Onion Skin (if enabled and there is a previous frame)
   if (showOnionSkin && currentFrameIndex > 0) {
@@ -603,13 +680,16 @@ function selectFrame(index) {
 
 // --- Live Preview Animation Engine ---
 function drawPreview() {
-  // Keep internal canvas dimensions matching canvasSize
-  if (previewCanvas.width !== canvasSize || previewCanvas.height !== canvasSize) {
-    previewCanvas.width = canvasSize;
-    previewCanvas.height = canvasSize;
+  const targetWidth = showPreviewTiling ? canvasSize * 3 : canvasSize;
+  const targetHeight = showPreviewTiling ? canvasSize * 3 : canvasSize;
+
+  // Keep internal canvas dimensions matching target size
+  if (previewCanvas.width !== targetWidth || previewCanvas.height !== targetHeight) {
+    previewCanvas.width = targetWidth;
+    previewCanvas.height = targetHeight;
   }
   
-  const colors = PALETTE_THEMES[activeTheme];
+  const colors = isGbcMode ? gbcPalettes[currentGbcPaletteIndex] : PALETTE_THEMES[activeTheme];
   let targetFrameIdx = currentFrameIndex;
   
   if (isPlaying) {
@@ -639,15 +719,31 @@ function drawPreview() {
     }
   }
   
-  // Draw temp canvas to main preview canvas with optional blend blur
+  // Draw temp canvas to main preview canvas with optional blend blur and tiling
+  const drawTiled = () => {
+    for (let ty = 0; ty < 3; ty++) {
+      for (let tx = 0; tx < 3; tx++) {
+        previewCtx.drawImage(previewTempCanvas, tx * canvasSize, ty * canvasSize);
+      }
+    }
+  };
+
   if (previewBlurEnabled && isPlaying) {
     // Overwrite with alpha to achieve phosphor response ghosting
     previewCtx.globalAlpha = 0.45;
-    previewCtx.drawImage(previewTempCanvas, 0, 0);
+    if (showPreviewTiling) {
+      drawTiled();
+    } else {
+      previewCtx.drawImage(previewTempCanvas, 0, 0);
+    }
     previewCtx.globalAlpha = 1.0; // Restore
   } else {
-    previewCtx.clearRect(0, 0, canvasSize, canvasSize);
-    previewCtx.drawImage(previewTempCanvas, 0, 0);
+    previewCtx.clearRect(0, 0, targetWidth, targetHeight);
+    if (showPreviewTiling) {
+      drawTiled();
+    } else {
+      previewCtx.drawImage(previewTempCanvas, 0, 0);
+    }
   }
 }
 
@@ -813,6 +909,11 @@ function addPixelToPath(x, y) {
 function drawPixelWithSymmetry(x, y, colorVal) {
   const currentFrame = frames[currentFrameIndex];
   if (!currentFrame) return;
+  
+  if (showSeamless) {
+    x = (x % canvasSize + canvasSize) % canvasSize;
+    y = (y % canvasSize + canvasSize) % canvasSize;
+  }
   
   // 元のピクセル
   if (x >= 0 && x < canvasSize && y >= 0 && y < canvasSize) {
@@ -1259,6 +1360,26 @@ function generateGBDK2020Code() {
   // Remove the last comma and newline, close braces
   code = code.trim().replace(/,$/, '') + '\n};';
   
+  if (isGbcMode) {
+    code += `\n\n/* GBDK 2020 Color Palette Data */\n`;
+    code += `// GBC Palette macros (UWORD arrays of 4 colors)\n`;
+    
+    gbcPalettes.forEach((palette, pIdx) => {
+      code += `const UWORD my_palette_${pIdx}[] = {\n  `;
+      const macroVals = palette.map(hex => {
+        // Convert hex #RRGGBB to RGB(r, g, b) where r, g, b are 0..31
+        const r = parseInt(hex.substr(1, 2), 16);
+        const g = parseInt(hex.substr(3, 2), 16);
+        const b = parseInt(hex.substr(5, 2), 16);
+        const r5 = Math.floor(r / 8);
+        const g5 = Math.floor(g / 8);
+        const b5 = Math.floor(b / 8);
+        return `RGB(${r5}, ${g5}, ${b5})`;
+      });
+      code += macroVals.join(', ') + `\n};\n`;
+    });
+  }
+
   return code;
 }
 
@@ -1758,6 +1879,19 @@ function setupEventListeners() {
     localStorage.setItem('gb_symmetry_v', showSymmetryV);
     drawMainCanvas();
   });
+  
+  if (chkSeamlessDraw) {
+    chkSeamlessDraw.addEventListener('change', (e) => {
+      showSeamless = e.target.checked;
+      drawMainCanvas();
+    });
+  }
+  if (chkPreviewTiling) {
+    chkPreviewTiling.addEventListener('change', (e) => {
+      showPreviewTiling = e.target.checked;
+      drawPreview();
+    });
+  }
   
   // Timeline Actions
   btnFrameAdd.addEventListener('click', addFrame);
@@ -2280,10 +2414,15 @@ function updateColorSwatches() {
       sw.classList.remove('active-secondary');
     }
   });
+
+  // Sync GBC color picker to selected primary color index
+  if (isGbcMode && gbcColorPicker) {
+    gbcColorPicker.value = gbcPalettes[currentGbcPaletteIndex][primaryColorIndex];
+  }
 }
 
 function updatePaletteColors() {
-  const colors = PALETTE_THEMES[activeTheme];
+  const colors = isGbcMode ? gbcPalettes[currentGbcPaletteIndex] : PALETTE_THEMES[activeTheme];
   colorSwatches.forEach((sw, idx) => {
     const preview = sw.querySelector('.color-preview');
     if (preview) {
@@ -2596,7 +2735,952 @@ function setupPanning() {
       }
     }
   });
+
+  // Mode Selection Tabs
+  if (modePixelBtn) modePixelBtn.addEventListener('click', () => switchMode('pixel'));
+  if (modeTilemapBtn) modeTilemapBtn.addEventListener('click', () => switchMode('tilemap'));
+  if (modeMetaspriteBtn) modeMetaspriteBtn.addEventListener('click', () => switchMode('metasprite'));
+
+  // GBC Palette UI listeners
+  if (chkGbcMode) {
+    chkGbcMode.addEventListener('change', (e) => {
+      isGbcMode = e.target.checked;
+      monoPaletteSelector.style.display = isGbcMode ? 'none' : 'flex';
+      gbcPaletteSelector.style.display = isGbcMode ? 'flex' : 'none';
+      gbcColorEditor.style.display = isGbcMode ? 'flex' : 'none';
+      
+      updateColorSwatches();
+      drawMainCanvas();
+      drawPreview();
+    });
+  }
+
+  if (gbcPaletteSelect) {
+    gbcPaletteSelect.addEventListener('change', (e) => {
+      currentGbcPaletteIndex = parseInt(e.target.value);
+      updateColorSwatches();
+      drawMainCanvas();
+      drawPreview();
+    });
+  }
+
+  if (gbcColorPicker) {
+    gbcColorPicker.addEventListener('input', (e) => {
+      const activeSwatch = document.querySelector('.color-swatch.active-primary');
+      if (activeSwatch) {
+        const idx = parseInt(activeSwatch.dataset.colorIdx);
+        gbcPalettes[currentGbcPaletteIndex][idx] = e.target.value;
+        updateColorSwatches();
+        drawMainCanvas();
+        drawPreview();
+        if (activeMode === 'tilemap') drawTilemap();
+        if (activeMode === 'metasprite') drawMetasprite();
+      }
+    });
+  }
+
+  // Tilemap UI listeners
+  if (tilemapToolStamp) tilemapToolStamp.addEventListener('click', () => setTilemapTool('stamp'));
+  if (tilemapToolEraser) tilemapToolEraser.addEventListener('click', () => setTilemapTool('eraser'));
+  if (tilemapToolFill) tilemapToolFill.addEventListener('click', () => setTilemapTool('fill'));
+  if (btnRefreshTileset) btnRefreshTileset.addEventListener('click', () => {
+    extractTileset();
+    renderTilesetSelector();
+    if (activeMode === 'tilemap') drawTilemap();
+  });
+  if (btnResizeTilemap) {
+    btnResizeTilemap.addEventListener('click', () => {
+      const w = parseInt(tilemapWidthInput.value) || 20;
+      const h = parseInt(tilemapHeightInput.value) || 18;
+      resizeTilemap(w, h);
+    });
+  }
+  if (chkTilemapGrid) {
+    chkTilemapGrid.addEventListener('change', () => {
+      drawTilemap();
+    });
+  }
+  if (btnTilemapExportC) {
+    btnTilemapExportC.addEventListener('click', exportTilemapC);
+  }
+  if (btnTilemapImportC) {
+    btnTilemapImportC.addEventListener('click', importTilemapC);
+  }
+
+  // Tilemap Canvas Drawing Interaction
+  if (tilemapCanvas) {
+    tilemapCanvas.addEventListener('mousedown', handleTilemapMouseDown);
+    tilemapCanvas.addEventListener('mousemove', handleTilemapMouseMove);
+  }
+
+  // Metasprite UI listeners
+  if (btnMetaspriteAddPart) {
+    btnMetaspriteAddPart.addEventListener('click', () => {
+      addMetaspritePart();
+    });
+  }
+  if (chkMetaspriteSize8x16) {
+    chkMetaspriteSize8x16.addEventListener('change', (e) => {
+      metasprite8x16 = e.target.checked;
+      extractTileset();
+      renderMetaspriteTilesetSelector();
+      drawMetasprite();
+    });
+  }
+  if (metaspritePartX) {
+    metaspritePartX.addEventListener('input', (e) => {
+      updateActivePartProp('x', parseInt(e.target.value) || 0);
+    });
+  }
+  if (metaspritePartY) {
+    metaspritePartY.addEventListener('input', (e) => {
+      updateActivePartProp('y', parseInt(e.target.value) || 0);
+    });
+  }
+  if (metaspritePartHFlip) {
+    metaspritePartHFlip.addEventListener('change', (e) => {
+      updateActivePartProp('xFlip', e.target.checked);
+    });
+  }
+  if (metaspritePartVFlip) {
+    metaspritePartVFlip.addEventListener('change', (e) => {
+      updateActivePartProp('yFlip', e.target.checked);
+    });
+  }
+  if (metaspritePartPalette) {
+    metaspritePartPalette.addEventListener('change', (e) => {
+      updateActivePartProp('palette', parseInt(e.target.value) || 0);
+    });
+  }
+  if (btnMetaspriteExportC) {
+    btnMetaspriteExportC.addEventListener('click', exportMetaspriteC);
+  }
+  if (btnMetaspriteImportC) {
+    btnMetaspriteImportC.addEventListener('click', importMetaspriteC);
+  }
+
+  // Metasprite Canvas Interaction
+  if (metaspriteCanvas) {
+    metaspriteCanvas.addEventListener('mousedown', handleMetaspriteMouseDown);
+    metaspriteCanvas.addEventListener('mousemove', handleMetaspriteMouseMove);
+  }
+
+  // Hotkeys for mode switching
+  window.addEventListener('keydown', (e) => {
+    if (document.activeElement.tagName === 'TEXTAREA' || document.activeElement.tagName === 'INPUT') {
+      return;
+    }
+    if (e.altKey && e.key.toLowerCase() === 'q') {
+      switchMode('pixel');
+    } else if (e.altKey && e.key.toLowerCase() === 'w') {
+      switchMode('tilemap');
+    } else if (e.altKey && e.key.toLowerCase() === 'e') {
+      switchMode('metasprite');
+    }
+  });
 }
 
 // Run init on DOM load
 window.addEventListener('DOMContentLoaded', init);
+
+// === CUSTOM EXTENSIONS LOGIC ===
+
+// --- Workspace Mode Selector ---
+function switchMode(mode) {
+  activeMode = mode;
+  
+  // Update UI active buttons
+  if (modePixelBtn) modePixelBtn.classList.toggle('active', mode === 'pixel');
+  if (modeTilemapBtn) modeTilemapBtn.classList.toggle('active', mode === 'tilemap');
+  if (modeMetaspriteBtn) modeMetaspriteBtn.classList.toggle('active', mode === 'metasprite');
+  
+  // Display target workspace and hide others
+  if (workspacePixel) workspacePixel.style.display = (mode === 'pixel') ? 'flex' : 'none';
+  if (workspaceTilemap) workspaceTilemap.style.display = (mode === 'tilemap') ? 'flex' : 'none';
+  if (workspaceMetasprite) workspaceMetasprite.style.display = (mode === 'metasprite') ? 'flex' : 'none';
+  
+  // Initializations per mode
+  if (mode === 'tilemap') {
+    extractTileset();
+    renderTilesetSelector();
+    drawTilemap();
+  } else if (mode === 'metasprite') {
+    extractTileset();
+    renderMetaspriteTilesetSelector();
+    drawMetasprite();
+    renderMetaspritePartsList();
+  } else {
+    // Pixel mode
+    updatePaletteColors();
+    updateColorSwatches();
+    drawMainCanvas();
+    drawPreview();
+  }
+}
+
+// --- Tileset Extraction (Deduplication) ---
+function extractTileset() {
+  tileSet = [];
+  
+  frames.forEach(frame => {
+    const tilesAcross = canvasSize / 8;
+    const tilesDown = canvasSize / 8;
+    
+    for (let ty = 0; ty < tilesDown; ty++) {
+      for (let tx = 0; tx < tilesAcross; tx++) {
+        // Extract 8x8 pixels block
+        const block = new Uint8Array(64);
+        for (let py = 0; py < 8; py++) {
+          for (let px = 0; px < 8; px++) {
+            const frameX = tx * 8 + px;
+            const frameY = ty * 8 + py;
+            block[py * 8 + px] = frame.data[frameY * canvasSize + frameX];
+          }
+        }
+        
+        // Deduplicate
+        let isDuplicate = false;
+        for (let i = 0; i < tileSet.length; i++) {
+          let match = true;
+          for (let j = 0; j < 64; j++) {
+            if (tileSet[i][j] !== block[j]) {
+              match = false;
+              break;
+            }
+          }
+          if (match) {
+            isDuplicate = true;
+            break;
+          }
+        }
+        
+        if (!isDuplicate) {
+          tileSet.push(block);
+        }
+      }
+    }
+  });
+
+  // Ensure there is at least one blank tile
+  if (tileSet.length === 0) {
+    tileSet.push(new Uint8Array(64));
+  }
+}
+
+// --- Tileset UI Selectors ---
+function renderTilesetSelector() {
+  if (!tilemapTilesetList) return;
+  tilemapTilesetList.innerHTML = '';
+  
+  const colors = isGbcMode ? gbcPalettes[currentGbcPaletteIndex] : PALETTE_THEMES[activeTheme];
+  
+  tileSet.forEach((tileData, index) => {
+    const item = document.createElement('div');
+    item.className = 'tileset-item';
+    if (index === selectedTilemapTile) item.classList.add('active');
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 8;
+    canvas.height = 8;
+    const ctx = canvas.getContext('2d');
+    
+    for (let y = 0; y < 8; y++) {
+      for (let x = 0; x < 8; x++) {
+        ctx.fillStyle = colors[tileData[y * 8 + x]];
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+    
+    item.appendChild(canvas);
+    
+    const label = document.createElement('span');
+    label.className = 'tileset-item-label';
+    label.innerText = index;
+    item.appendChild(label);
+    
+    item.addEventListener('click', () => {
+      document.querySelectorAll('#tilemap-tileset-list .tileset-item').forEach(el => el.classList.remove('active'));
+      item.classList.add('active');
+      selectedTilemapTile = index;
+    });
+    
+    tilemapTilesetList.appendChild(item);
+  });
+}
+
+function renderMetaspriteTilesetSelector() {
+  if (!metaspriteTilesetList) return;
+  metaspriteTilesetList.innerHTML = '';
+  
+  const colors = isGbcMode ? gbcPalettes[currentGbcPaletteIndex] : PALETTE_THEMES[activeTheme];
+  const h = metasprite8x16 ? 16 : 8;
+  
+  tileSet.forEach((tileData, index) => {
+    const item = document.createElement('div');
+    item.className = 'tileset-item';
+    if (index === selectedMetaspriteTile) item.classList.add('active');
+    
+    const canvas = document.createElement('canvas');
+    canvas.width = 8;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < 8; x++) {
+        let colorVal = 0;
+        if (metasprite8x16) {
+          const isSecondTile = y >= 8;
+          const localY = y % 8;
+          const tileIdxOffset = isSecondTile ? (index + 1) % tileSet.length : index;
+          colorVal = tileSet[tileIdxOffset][localY * 8 + x];
+        } else {
+          colorVal = tileData[y * 8 + x];
+        }
+        ctx.fillStyle = colors[colorVal];
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+    
+    item.appendChild(canvas);
+    
+    const label = document.createElement('span');
+    label.className = 'tileset-item-label';
+    label.innerText = index;
+    item.appendChild(label);
+    
+    item.addEventListener('click', () => {
+      document.querySelectorAll('#metasprite-tileset-list .tileset-item').forEach(el => el.classList.remove('active'));
+      item.classList.add('active');
+      selectedMetaspriteTile = index;
+    });
+    
+    metaspriteTilesetList.appendChild(item);
+  });
+}
+
+// --- Tilemap Editor Functions ---
+function drawTilemap() {
+  if (!tilemapCanvas || !tilemapCtx) return;
+  
+  tilemapCtx.clearRect(0, 0, tilemapCanvas.width, tilemapCanvas.height);
+  
+  const cellWidth = tilemapCanvas.width / tilemapWidth;
+  const cellHeight = tilemapCanvas.height / tilemapHeight;
+  const colors = isGbcMode ? gbcPalettes[currentGbcPaletteIndex] : PALETTE_THEMES[activeTheme];
+  
+  for (let y = 0; y < tilemapHeight; y++) {
+    for (let x = 0; x < tilemapWidth; x++) {
+      const tileIdx = tilemapData[y * tilemapWidth + x];
+      const tileData = tileSet[tileIdx] || new Uint8Array(64);
+      
+      const pxSizeX = cellWidth / 8;
+      const pxSizeY = cellHeight / 8;
+      
+      for (let ty = 0; ty < 8; ty++) {
+        for (let tx = 0; tx < 8; tx++) {
+          const colorVal = tileData[ty * 8 + tx];
+          tilemapCtx.fillStyle = colors[colorVal];
+          tilemapCtx.fillRect(
+            x * cellWidth + tx * pxSizeX,
+            y * cellHeight + ty * pxSizeY,
+            pxSizeX + 0.1,
+            pxSizeY + 0.1
+          );
+        }
+      }
+    }
+  }
+  
+  // Draw Grid Lines
+  if (chkTilemapGrid && chkTilemapGrid.checked) {
+    tilemapCtx.strokeStyle = 'rgba(255, 255, 255, 0.1)';
+    tilemapCtx.lineWidth = 1;
+    tilemapCtx.beginPath();
+    for (let i = 1; i < tilemapWidth; i++) {
+      const pos = i * cellWidth;
+      tilemapCtx.moveTo(pos, 0);
+      tilemapCtx.lineTo(pos, tilemapCanvas.height);
+    }
+    for (let i = 1; i < tilemapHeight; i++) {
+      const pos = i * cellHeight;
+      tilemapCtx.moveTo(0, pos);
+      tilemapCtx.lineTo(tilemapCanvas.width, pos);
+    }
+    tilemapCtx.stroke();
+  }
+}
+
+let isDrawingTilemap = false;
+
+function setTilemapTool(tool) {
+  activeTilemapTool = tool;
+  if (tilemapToolStamp) tilemapToolStamp.classList.toggle('active', tool === 'stamp');
+  if (tilemapToolEraser) tilemapToolEraser.classList.toggle('active', tool === 'eraser');
+  if (tilemapToolFill) tilemapToolFill.classList.toggle('active', tool === 'fill');
+}
+
+function handleTilemapMouseDown(e) {
+  isDrawingTilemap = true;
+  handleTilemapDrawAction(e);
+}
+
+function handleTilemapMouseMove(e) {
+  const rect = tilemapCanvas.getBoundingClientRect();
+  const scaleX = tilemapWidth / rect.width;
+  const scaleY = tilemapHeight / rect.height;
+  const mapX = Math.floor((e.clientX - rect.left) * scaleX);
+  const mapY = Math.floor((e.clientY - rect.top) * scaleY);
+  
+  if (mapX >= 0 && mapX < tilemapWidth && mapY >= 0 && mapY < tilemapHeight) {
+    if (tilemapCursorCoord) {
+      tilemapCursorCoord.innerText = `Tile: X: ${mapX}, Y: ${mapY}`;
+    }
+    if (isDrawingTilemap) {
+      handleTilemapDrawAction(e);
+    }
+  }
+}
+
+function handleTilemapMouseUp() {
+  isDrawingTilemap = false;
+}
+
+function handleTilemapDrawAction(e) {
+  const rect = tilemapCanvas.getBoundingClientRect();
+  const scaleX = tilemapWidth / rect.width;
+  const scaleY = tilemapHeight / rect.height;
+  const mapX = Math.floor((e.clientX - rect.left) * scaleX);
+  const mapY = Math.floor((e.clientY - rect.top) * scaleY);
+  
+  if (mapX < 0 || mapX >= tilemapWidth || mapY < 0 || mapY >= tilemapHeight) return;
+  
+  const index = mapY * tilemapWidth + mapX;
+  
+  if (activeTilemapTool === 'stamp') {
+    tilemapData[index] = selectedTilemapTile;
+  } else if (activeTilemapTool === 'eraser') {
+    tilemapData[index] = 0; // Empty/0th tile
+  } else if (activeTilemapTool === 'fill') {
+    const targetTile = tilemapData[index];
+    const fillTile = selectedTilemapTile;
+    if (targetTile !== fillTile) {
+      floodFillTilemap(mapX, mapY, targetTile, fillTile);
+    }
+  }
+  
+  drawTilemap();
+}
+
+function floodFillTilemap(startX, startY, targetTile, fillTile) {
+  const queue = [[startX, startY]];
+  const visited = new Set();
+  
+  while (queue.length > 0) {
+    const [x, y] = queue.shift();
+    const key = `${x},${y}`;
+    if (visited.has(key)) continue;
+    visited.add(key);
+    
+    const index = y * tilemapWidth + x;
+    if (tilemapData[index] === targetTile) {
+      tilemapData[index] = fillTile;
+      
+      if (x > 0) queue.push([x - 1, y]);
+      if (x < tilemapWidth - 1) queue.push([x + 1, y]);
+      if (y > 0) queue.push([x, y - 1]);
+      if (y < tilemapHeight - 1) queue.push([x, y + 1]);
+    }
+  }
+}
+
+function resizeTilemap(w, h) {
+  const newData = new Uint8Array(w * h);
+  for (let y = 0; y < Math.min(tilemapHeight, h); y++) {
+    for (let x = 0; x < Math.min(tilemapWidth, w); x++) {
+      newData[y * w + x] = tilemapData[y * tilemapWidth + x];
+    }
+  }
+  tilemapWidth = w;
+  tilemapHeight = h;
+  tilemapData = newData;
+  drawTilemap();
+}
+
+// --- Tilemap C Export/Import ---
+function exportTilemapC() {
+  if (!tilemapCodeIo) return;
+  
+  let code = `/* GBDotEditor - Generated Tilemap Array */\n`;
+  code += `/* Map Width: ${tilemapWidth}, Height: ${tilemapHeight} */\n\n`;
+  code += `const unsigned char map_data[] = {\n`;
+  
+  for (let y = 0; y < tilemapHeight; y++) {
+    code += `    `;
+    for (let x = 0; x < tilemapWidth; x++) {
+      const tile = tilemapData[y * tilemapWidth + x];
+      code += `0x${tile.toString(16).padStart(2, '0').toUpperCase()}, `;
+    }
+    code += `\n`;
+  }
+  code += `};\n`;
+  
+  tilemapCodeIo.value = code;
+}
+
+function importTilemapC() {
+  if (!tilemapCodeIo) return;
+  const code = tilemapCodeIo.value;
+  
+  const hexPattern = /0x[0-9A-Fa-f]{2}/g;
+  const matches = code.match(hexPattern);
+  if (!matches) {
+    alert("Cコードから16進数データを検出できませんでした。");
+    return;
+  }
+  
+  const values = matches.map(m => parseInt(m, 16));
+  
+  const widthMatch = code.match(/Map Width:\s*(\d+)/i);
+  const heightMatch = code.match(/Height:\s*(\d+)/i);
+  
+  let w = tilemapWidth;
+  let h = tilemapHeight;
+  
+  if (widthMatch && heightMatch) {
+    w = parseInt(widthMatch[1]);
+    h = parseInt(heightMatch[1]);
+  } else {
+    if (values.length === 360) {
+      w = 20;
+      h = 18;
+    } else {
+      w = Math.floor(Math.sqrt(values.length));
+      h = Math.ceil(values.length / w);
+    }
+  }
+  
+  tilemapWidth = w;
+  tilemapHeight = h;
+  if (tilemapWidthInput) tilemapWidthInput.value = w;
+  if (tilemapHeightInput) tilemapHeightInput.value = h;
+  
+  tilemapData = new Uint8Array(w * h);
+  for (let i = 0; i < Math.min(values.length, w * h); i++) {
+    tilemapData[i] = values[i];
+  }
+  
+  drawTilemap();
+  alert(`マップデータをインポートしました (${w}x${h} タイル)`);
+}
+
+// --- Metasprite Editor Functions ---
+let isDraggingMetaspritePart = false;
+let dragPartStartX = 0;
+let dragPartStartY = 0;
+let partOrigX = 0;
+let partOrigY = 0;
+
+function drawMetasprite() {
+  if (!metaspriteCanvas || !metaspriteCtx) return;
+  
+  metaspriteCtx.clearRect(0, 0, metaspriteCanvas.width, metaspriteCanvas.height);
+  
+  const center = metaspriteCanvas.width / 2;
+  const colors = isGbcMode ? gbcPalettes[currentGbcPaletteIndex] : PALETTE_THEMES[activeTheme];
+  
+  // Draw Crosshair Pivot
+  metaspriteCtx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+  metaspriteCtx.lineWidth = 1;
+  metaspriteCtx.beginPath();
+  metaspriteCtx.moveTo(center, 0);
+  metaspriteCtx.lineTo(center, metaspriteCanvas.height);
+  metaspriteCtx.moveTo(0, center);
+  metaspriteCtx.lineTo(metaspriteCanvas.width, center);
+  metaspriteCtx.stroke();
+  
+  const scale = 16; // 1 pixel = 16 screen pixels
+  
+  metaspriteParts.forEach(part => {
+    const tileIdx = part.tileIndex;
+    const drawHeight = metasprite8x16 ? 16 : 8;
+    const tileData = tileSet[tileIdx] || new Uint8Array(64);
+    
+    const partScreenX = center + part.x * scale;
+    const partScreenY = center + part.y * scale;
+    
+    for (let y = 0; y < drawHeight; y++) {
+      for (let x = 0; x < 8; x++) {
+        const sampleX = part.xFlip ? (7 - x) : x;
+        const sampleY = part.yFlip ? (drawHeight - 1 - y) : y;
+        
+        let colorVal = 0;
+        if (metasprite8x16) {
+          const isSecondTile = sampleY >= 8;
+          const localY = sampleY % 8;
+          const tileIdxOffset = isSecondTile ? (tileIdx + 1) % tileSet.length : tileIdx;
+          colorVal = (tileSet[tileIdxOffset] || new Uint8Array(64))[localY * 8 + sampleX];
+        } else {
+          colorVal = tileData[sampleY * 8 + sampleX];
+        }
+        
+        if (colorVal > 0) { // Color 0 is transparent for sprites
+          const paletteColors = isGbcMode ? gbcPalettes[part.palette] : PALETTE_THEMES[activeTheme];
+          metaspriteCtx.fillStyle = paletteColors[colorVal];
+          metaspriteCtx.fillRect(
+            partScreenX + x * scale,
+            partScreenY + y * scale,
+            scale,
+            scale
+          );
+        }
+      }
+    }
+    
+    // Draw Active Border
+    if (part.id === activeMetaspritePartId) {
+      metaspriteCtx.strokeStyle = '#ef4444';
+      metaspriteCtx.lineWidth = 2;
+      metaspriteCtx.strokeRect(
+        partScreenX,
+        partScreenY,
+        8 * scale,
+        drawHeight * scale
+      );
+    }
+  });
+}
+
+function addMetaspritePart() {
+  const newPart = {
+    id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+    tileIndex: selectedMetaspriteTile,
+    x: 0,
+    y: 0,
+    xFlip: false,
+    yFlip: false,
+    palette: 0
+  };
+  
+  metaspriteParts.push(newPart);
+  activeMetaspritePartId = newPart.id;
+  
+  drawMetasprite();
+  renderMetaspritePartsList();
+  updatePartPropertiesUI();
+}
+
+function updateActivePartProp(prop, value) {
+  const part = metaspriteParts.find(p => p.id === activeMetaspritePartId);
+  if (part) {
+    part[prop] = value;
+    drawMetasprite();
+    renderMetaspritePartsList();
+  }
+}
+
+function selectMetaspritePart(id) {
+  activeMetaspritePartId = id;
+  drawMetasprite();
+  renderMetaspritePartsList();
+  updatePartPropertiesUI();
+}
+
+function updatePartPropertiesUI() {
+  const part = metaspriteParts.find(p => p.id === activeMetaspritePartId);
+  if (!part) {
+    if (metaspritePartProperties) metaspritePartProperties.style.display = 'none';
+    return;
+  }
+  
+  if (metaspritePartProperties) metaspritePartProperties.style.display = 'block';
+  
+  if (metaspritePartX) metaspritePartX.value = part.x;
+  if (metaspritePartY) metaspritePartY.value = part.y;
+  if (metaspritePartHFlip) metaspritePartHFlip.checked = part.xFlip;
+  if (metaspritePartVFlip) metaspritePartVFlip.checked = part.yFlip;
+  if (metaspritePartPalette) metaspritePartPalette.value = part.palette;
+}
+
+function renderMetaspritePartsList() {
+  if (!metaspritePartsList) return;
+  metaspritePartsList.innerHTML = '';
+  
+  const colors = isGbcMode ? gbcPalettes[currentGbcPaletteIndex] : PALETTE_THEMES[activeTheme];
+  const h = metasprite8x16 ? 16 : 8;
+  
+  metaspriteParts.forEach((part, index) => {
+    const item = document.createElement('div');
+    item.className = 'metasprite-part-item';
+    if (part.id === activeMetaspritePartId) item.classList.add('active');
+    
+    // Thumbnail Canvas
+    const thumb = document.createElement('div');
+    thumb.className = 'part-thumbnail';
+    const canvas = document.createElement('canvas');
+    canvas.width = 8;
+    canvas.height = h;
+    const ctx = canvas.getContext('2d');
+    
+    const tileData = tileSet[part.tileIndex] || new Uint8Array(64);
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < 8; x++) {
+        const sampleX = part.xFlip ? (7 - x) : x;
+        const sampleY = part.yFlip ? (h - 1 - y) : y;
+        
+        let colorVal = 0;
+        if (metasprite8x16) {
+          const isSecondTile = sampleY >= 8;
+          const localY = sampleY % 8;
+          const tileIdxOffset = isSecondTile ? (part.tileIndex + 1) % tileSet.length : part.tileIndex;
+          colorVal = (tileSet[tileIdxOffset] || new Uint8Array(64))[localY * 8 + sampleX];
+        } else {
+          colorVal = tileData[sampleY * 8 + sampleX];
+        }
+        ctx.fillStyle = colors[colorVal];
+        ctx.fillRect(x, y, 1, 1);
+      }
+    }
+    thumb.appendChild(canvas);
+    item.appendChild(thumb);
+    
+    // Text Info
+    const info = document.createElement('div');
+    info.className = 'part-info';
+    info.innerText = `#${index} T:${part.tileIndex} (${part.x},${part.y})`;
+    item.appendChild(info);
+    
+    // Reorder & delete buttons
+    const controls = document.createElement('div');
+    controls.className = 'part-controls';
+    
+    const btnUp = document.createElement('button');
+    btnUp.className = 'btn-part-action';
+    btnUp.innerHTML = '▲';
+    btnUp.onclick = (e) => {
+      e.stopPropagation();
+      if (index > 0) {
+        const temp = metaspriteParts[index - 1];
+        metaspriteParts[index - 1] = metaspriteParts[index];
+        metaspriteParts[index] = temp;
+        drawMetasprite();
+        renderMetaspritePartsList();
+      }
+    };
+    controls.appendChild(btnUp);
+    
+    const btnDown = document.createElement('button');
+    btnDown.className = 'btn-part-action';
+    btnDown.innerHTML = '▼';
+    btnDown.onclick = (e) => {
+      e.stopPropagation();
+      if (index < metaspriteParts.length - 1) {
+        const temp = metaspriteParts[index + 1];
+        metaspriteParts[index + 1] = metaspriteParts[index];
+        metaspriteParts[index] = temp;
+        drawMetasprite();
+        renderMetaspritePartsList();
+      }
+    };
+    controls.appendChild(btnDown);
+    
+    const btnDel = document.createElement('button');
+    btnDel.className = 'btn-part-action delete';
+    btnDel.innerHTML = '×';
+    btnDel.onclick = (e) => {
+      e.stopPropagation();
+      metaspriteParts.splice(index, 1);
+      if (activeMetaspritePartId === part.id) activeMetaspritePartId = null;
+      drawMetasprite();
+      renderMetaspritePartsList();
+      updatePartPropertiesUI();
+    };
+    controls.appendChild(btnDel);
+    
+    item.appendChild(controls);
+    
+    item.addEventListener('click', () => {
+      selectMetaspritePart(part.id);
+    });
+    
+    metaspritePartsList.appendChild(item);
+  });
+}
+
+function handleMetaspriteMouseDown(e) {
+  const rect = metaspriteCanvas.getBoundingClientRect();
+  const center = rect.width / 2;
+  const scale = 16; // Scale factor 16
+  const mouseX = Math.round((e.clientX - rect.left - center) / scale);
+  const mouseY = Math.round((e.clientY - rect.top - center) / scale);
+  
+  let found = null;
+  const h = metasprite8x16 ? 16 : 8;
+  for (let i = metaspriteParts.length - 1; i >= 0; i--) {
+    const p = metaspriteParts[i];
+    if (mouseX >= p.x && mouseX < p.x + 8 && mouseY >= p.y && mouseY < p.y + h) {
+      found = p;
+      break;
+    }
+  }
+  
+  if (found) {
+    selectMetaspritePart(found.id);
+    isDraggingMetaspritePart = true;
+    dragPartStartX = e.clientX;
+    dragPartStartY = e.clientY;
+    partOrigX = found.x;
+    partOrigY = found.y;
+  } else {
+    activeMetaspritePartId = null;
+    drawMetasprite();
+    renderMetaspritePartsList();
+    updatePartPropertiesUI();
+  }
+}
+
+function handleMetaspriteMouseMove(e) {
+  if (isDraggingMetaspritePart && activeMetaspritePartId) {
+    const scale = 16;
+    const dx = Math.round((e.clientX - dragPartStartX) / scale);
+    const dy = Math.round((e.clientY - dragPartStartY) / scale);
+    
+    const part = metaspriteParts.find(p => p.id === activeMetaspritePartId);
+    if (part) {
+      part.x = partOrigX + dx;
+      part.y = partOrigY + dy;
+      
+      part.x = Math.max(-128, Math.min(127, part.x));
+      part.y = Math.max(-128, Math.min(127, part.y));
+      
+      if (metaspritePartX) metaspritePartX.value = part.x;
+      if (metaspritePartY) metaspritePartY.value = part.y;
+      
+      drawMetasprite();
+      renderMetaspritePartsList();
+    }
+  }
+}
+
+function handleMetaspriteMouseUp() {
+  isDraggingMetaspritePart = false;
+}
+
+// Keyboard arrow keys fine-tuning for Metasprites
+window.addEventListener('keydown', (e) => {
+  if (activeMode !== 'metasprite' || !activeMetaspritePartId) return;
+  if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+  
+  let handled = false;
+  let dx = 0;
+  let dy = 0;
+  
+  if (e.key === 'ArrowLeft') {
+    dx = -1;
+    handled = true;
+  } else if (e.key === 'ArrowRight') {
+    dx = 1;
+    handled = true;
+  } else if (e.key === 'ArrowUp') {
+    dy = -1;
+    handled = true;
+  } else if (e.key === 'ArrowDown') {
+    dy = 1;
+    handled = true;
+  }
+  
+  if (handled) {
+    e.preventDefault();
+    const part = metaspriteParts.find(p => p.id === activeMetaspritePartId);
+    if (part) {
+      part.x = Math.max(-128, Math.min(127, part.x + dx));
+      part.y = Math.max(-128, Math.min(127, part.y + dy));
+      
+      if (metaspritePartX) metaspritePartX.value = part.x;
+      if (metaspritePartY) metaspritePartY.value = part.y;
+      
+      drawMetasprite();
+      renderMetaspritePartsList();
+    }
+  }
+});
+
+// --- Metasprite C Export/Import ---
+function exportMetaspriteC() {
+  if (!metaspriteCodeIo) return;
+  
+  let code = `/* GBDotEditor - Generated Metasprite Array */\n`;
+  code += `/* Sprite Mode: ${metasprite8x16 ? '8x16' : '8x8'} */\n\n`;
+  code += `#include <gb/gb.h>\n\n`;
+  code += `const metasprite_t custom_metasprite[] = {\n`;
+  
+  metaspriteParts.forEach(part => {
+    let prop = 0;
+    if (part.xFlip) prop |= 0x20;
+    if (part.yFlip) prop |= 0x40;
+    prop |= (part.palette & 0x07);
+    
+    code += `  { ${part.y}, ${part.x}, ${part.tileIndex}, 0x${prop.toString(16).padStart(2, '0').toUpperCase()} },\n`;
+  });
+  
+  code += `  { 128 }\n`;
+  code += `};\n`;
+  
+  metaspriteCodeIo.value = code;
+}
+
+function importMetaspriteC() {
+  if (!metaspriteCodeIo) return;
+  const code = metaspriteCodeIo.value;
+  
+  if (code.includes('8x16')) {
+    metasprite8x16 = true;
+    if (chkMetaspriteSize8x16) chkMetaspriteSize8x16.checked = true;
+  } else if (code.includes('8x8')) {
+    metasprite8x16 = false;
+    if (chkMetaspriteSize8x16) chkMetaspriteSize8x16.checked = false;
+  }
+  
+  const regex = /\{\s*(-?\d+)\s*,\s*(-?\d+)\s*,\s*(\d+)\s*,\s*(0x[0-9a-fA-F]+|\d+)\s*\}/g;
+  let match;
+  const parsedParts = [];
+  
+  while ((match = regex.exec(code)) !== null) {
+    const y = parseInt(match[1]);
+    const x = parseInt(match[2]);
+    const tileIndex = parseInt(match[3]);
+    const propVal = match[4].startsWith('0x') ? parseInt(match[4], 16) : parseInt(match[4]);
+    
+    if (y === 128) break;
+    
+    const xFlip = (propVal & 0x20) !== 0;
+    const yFlip = (propVal & 0x40) !== 0;
+    const palette = propVal & 0x07;
+    
+    parsedParts.push({
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+      tileIndex,
+      x,
+      y,
+      xFlip,
+      yFlip,
+      palette
+    });
+  }
+  
+  if (parsedParts.length === 0) {
+    alert("Cコードからメタスプライトデータを解析できませんでした。");
+    return;
+  }
+  
+  metaspriteParts = parsedParts;
+  activeMetaspritePartId = metaspriteParts.length > 0 ? metaspriteParts[0].id : null;
+  
+  extractTileset();
+  renderMetaspriteTilesetSelector();
+  drawMetasprite();
+  renderMetaspritePartsList();
+  updatePartPropertiesUI();
+  
+  alert(`メタスプライトをインポートしました (${parsedParts.length} パーツ)`);
+}
+

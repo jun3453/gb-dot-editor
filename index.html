@@ -19,6 +19,11 @@
         <h1>GBDotEditor</h1>
         <span class="logo-sub">GBDK2020 Edition</span>
       </div>
+      <div class="editor-mode-selector">
+        <button id="mode-pixel" class="btn-mode active" title="タイル/アニメーションエディタ (Alt+Q)">🎨 タイル</button>
+        <button id="mode-tilemap" class="btn-mode" title="背景マップエディタ (Alt+W)">🗺️ マップ</button>
+        <button id="mode-metasprite" class="btn-mode" title="スプライトキャラ構築 (Alt+E)">👾 メタスプライト</button>
+      </div>
       <div class="layout-controls">
         <button id="btn-toggle-tools" class="btn-icon" title="ツールパネルの表示/非表示 (Alt+1)">
           <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><line x1="9" y1="3" x2="9" y2="21"/></svg>
@@ -41,7 +46,7 @@
     </header>
 
     <!-- Main Workspace -->
-    <main class="workspace">
+    <main class="workspace" id="workspace-pixel">
       <!-- Left Panel: Tools -->
       <aside class="panel tools-panel">
         <div class="panel-section">
@@ -213,6 +218,13 @@
             </label>
             <span>オニオンスキン</span>
           </div>
+          <div class="toggle-control">
+            <label class="switch">
+              <input type="checkbox" id="chk-seamless-draw">
+              <span class="slider"></span>
+            </label>
+            <span>シームレス描画</span>
+          </div>
         </div>
       </aside>
 
@@ -220,9 +232,9 @@
 
       <!-- Center Panel: Editor Canvas and Timeline -->
       <section class="center-workspace">
-        <div class="canvas-wrapper">
+        <div class="canvas-wrapper" id="editor-canvas-wrapper">
           <!-- Onion skin overlay canvas and main canvas -->
-          <div class="canvas-container">
+          <div class="canvas-container" id="editor-canvas-container">
             <canvas id="editor-canvas" width="512" height="512"></canvas>
           </div>
           <!-- Canvas Floating Zoom Controls -->
@@ -283,36 +295,68 @@
 
         <!-- Color Palette -->
         <div class="panel-section">
-          <h3>カラーパレット (Gameboy)</h3>
-          <div class="palette-theme-selector">
+          <div class="palette-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h3>カラーパレット</h3>
+            <div class="toggle-control" style="margin: 0;">
+              <label class="switch">
+                <input type="checkbox" id="chk-gbc-mode">
+                <span class="slider"></span>
+              </label>
+              <span style="font-size: 12px; font-weight: 600;">GBC</span>
+            </div>
+          </div>
+          
+          <!-- Mono palette selector -->
+          <div id="mono-palette-selector" class="palette-theme-selector">
             <button id="palette-classic" class="btn-theme active">初代緑調</button>
             <button id="palette-pocket" class="btn-theme">ポケット</button>
           </div>
+          
+          <!-- GBC palette selector (hidden by default) -->
+          <div id="gbc-palette-selector" class="palette-theme-selector" style="display: none; width: 100%;">
+            <select id="gbc-palette-select" style="width: 100%; padding: 6px 10px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-family: inherit;">
+              <option value="0">パレット 0 (BG0 / OBJ0)</option>
+              <option value="1">パレット 1 (BG1 / OBJ1)</option>
+              <option value="2">パレット 2 (BG2 / OBJ2)</option>
+              <option value="3">パレット 3 (BG3 / OBJ3)</option>
+              <option value="4">パレット 4 (BG4 / OBJ4)</option>
+              <option value="5">パレット 5 (BG5 / OBJ5)</option>
+              <option value="6">パレット 6 (BG6 / OBJ6)</option>
+              <option value="7">パレット 7 (BG7 / OBJ7)</option>
+            </select>
+          </div>
+          
           <div class="palette-colors">
-            <button class="color-swatch active-secondary" data-color-idx="0" title="白/ライト (Index 0)">
-              <span class="color-preview" style="background-color: #e0f8d0;"></span>
+            <button class="color-swatch active-secondary" data-color-idx="0" title="Index 0">
+              <span class="color-preview" id="swatch-preview-0" style="background-color: #e0f8d0;"></span>
               <span class="color-label">Index 0</span>
               <span class="swatch-indicator primary-indicator">L</span>
               <span class="swatch-indicator secondary-indicator">R</span>
             </button>
-            <button class="color-swatch" data-color-idx="1" title="薄いグレー (Index 1)">
-              <span class="color-preview" style="background-color: #88c070;"></span>
+            <button class="color-swatch" data-color-idx="1" title="Index 1">
+              <span class="color-preview" id="swatch-preview-1" style="background-color: #88c070;"></span>
               <span class="color-label">Index 1</span>
               <span class="swatch-indicator primary-indicator">L</span>
               <span class="swatch-indicator secondary-indicator">R</span>
             </button>
-            <button class="color-swatch" data-color-idx="2" title="濃いグレー (Index 2)">
-              <span class="color-preview" style="background-color: #346856;"></span>
+            <button class="color-swatch" data-color-idx="2" title="Index 2">
+              <span class="color-preview" id="swatch-preview-2" style="background-color: #346856;"></span>
               <span class="color-label">Index 2</span>
               <span class="swatch-indicator primary-indicator">L</span>
               <span class="swatch-indicator secondary-indicator">R</span>
             </button>
-            <button class="color-swatch active-primary" data-color-idx="3" title="黒/ダーク (Index 3)">
-              <span class="color-preview" style="background-color: #081820;"></span>
+            <button class="color-swatch active-primary" data-color-idx="3" title="Index 3">
+              <span class="color-preview" id="swatch-preview-3" style="background-color: #081820;"></span>
               <span class="color-label">Index 3</span>
               <span class="swatch-indicator primary-indicator">L</span>
               <span class="swatch-indicator secondary-indicator">R</span>
             </button>
+          </div>
+
+          <!-- GBC Custom Color Editor (hidden by default) -->
+          <div id="gbc-color-editor" style="display: none; margin-top: 10px; align-items: center; justify-content: space-between; gap: 10px; background: rgba(255,255,255,0.03); padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+            <span style="font-size: 12px; color: #aaa;">選択色の編集:</span>
+            <input type="color" id="gbc-color-picker" value="#ffffff" style="border: none; background: transparent; cursor: pointer; width: 40px; height: 28px;">
           </div>
         </div>
 
@@ -339,6 +383,13 @@
                 <span class="slider"></span>
               </label>
               <span>液晶残像</span>
+            </div>
+            <div class="toggle-control">
+              <label class="switch">
+                <input type="checkbox" id="chk-preview-tiling">
+                <span class="slider"></span>
+              </label>
+              <span>3x3タイリング</span>
             </div>
           </div>
           <div class="preview-controls">
@@ -396,6 +447,197 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Tilemap Workspace -->
+    <main class="workspace" id="workspace-tilemap" style="display: none;">
+      <!-- Left Panel: Tilemap Tools & Tileset -->
+      <aside class="panel tools-panel" id="tilemap-tools">
+        <div class="panel-section">
+          <h3>マップ編集ツール</h3>
+          <div class="tool-grid">
+            <button id="tilemap-tool-stamp" class="btn-tool active" title="タイルスタンプ (S)">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-3.5-6.5C12.5 5.5 11 7 10 8.5S7 12 7 15a7 7 0 0 0 7 7Z"/></svg>
+              <span>スタンプ</span>
+            </button>
+            <button id="tilemap-tool-eraser" class="btn-tool" title="タイル消しゴム (E)">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21Z"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+              <span>消しゴム</span>
+            </button>
+            <button id="tilemap-tool-fill" class="btn-tool" title="バケツ塗りつぶし (F)">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-3.5-6.5C12.5 5.5 11 7 10 8.5S7 12 7 15a7 7 0 0 0 7 7Z"/></svg>
+              <span>塗りつぶし</span>
+            </button>
+          </div>
+        </div>
+        
+        <div class="panel-section">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+            <h3>タイルセット</h3>
+            <button id="btn-refresh-tileset" class="btn-action" style="padding: 4px 8px; font-size: 11px;">再抽出</button>
+          </div>
+          <p style="font-size: 11px; color: #888; margin-bottom: 8px;">タイルエディタの全フレームから重複排除して構築されます。</p>
+          <div id="tilemap-tileset-list" class="tileset-grid-container" style="max-height: 300px; overflow-y: auto;">
+            <!-- Dynamically populated tileset elements -->
+          </div>
+        </div>
+      </aside>
+
+      <div class="resizer" id="resizer-tilemap-left"></div>
+
+      <!-- Center Panel: Map Canvas -->
+      <section class="center-workspace">
+        <div class="canvas-wrapper" id="tilemap-canvas-wrapper">
+          <div class="canvas-container" id="tilemap-canvas-container">
+            <canvas id="tilemap-canvas" width="512" height="512"></canvas>
+          </div>
+          <!-- Floating info -->
+          <div class="canvas-zoom-controls" style="background: rgba(15,23,42,0.85);">
+            <span id="tilemap-cursor-coord" style="font-family: 'Share Tech Mono', monospace; font-size: 12px; color: #10b981;">Tile: X: 0, Y: 0</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="resizer" id="resizer-tilemap-right"></div>
+
+      <!-- Right Panel: Tilemap Settings & Export -->
+      <aside class="panel sidebar-panel" id="tilemap-sidebar">
+        <div class="panel-section">
+          <h3>マップサイズ</h3>
+          <div style="display: flex; gap: 8px; align-items: center;">
+            <div style="flex: 1;">
+              <label style="font-size: 11px; color: #aaa; display: block; margin-bottom: 4px;">幅 (タイル)</label>
+              <input type="number" id="tilemap-width-input" value="20" min="1" max="128" style="width: 100%; padding: 6px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff;">
+            </div>
+            <div style="flex: 1;">
+              <label style="font-size: 11px; color: #aaa; display: block; margin-bottom: 4px;">高さ (タイル)</label>
+              <input type="number" id="tilemap-height-input" value="18" min="1" max="128" style="width: 100%; padding: 6px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff;">
+            </div>
+          </div>
+          <button id="btn-resize-tilemap" class="btn-action btn-primary" style="width: 100%; margin-top: 10px;">サイズ変更を適用</button>
+        </div>
+
+        <div class="panel-section">
+          <div class="toggle-control">
+            <label class="switch">
+              <input type="checkbox" id="chk-tilemap-grid" checked>
+              <span class="slider"></span>
+            </label>
+            <span>グリッド線を表示</span>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <h3>GBDK / Mapデータ出力</h3>
+          <div class="textarea-wrapper">
+            <textarea id="tilemap-code-io" placeholder="ここにマップ配列コードを貼り付けてインポートするか、生成されたコードをコピーします。" style="height: 140px; font-family: 'Share Tech Mono', monospace; font-size: 11px;"></textarea>
+          </div>
+          <div class="io-actions" style="margin-top: 8px; display: flex; gap: 6px;">
+            <button id="btn-tilemap-import-c" class="btn-action btn-primary" style="flex: 1; font-size: 11px;">インポート</button>
+            <button id="btn-tilemap-export-c" class="btn-action" style="flex: 1; font-size: 11px;">C配列生成</button>
+          </div>
+        </div>
+      </aside>
+    </main>
+
+    <!-- Metasprite Workspace -->
+    <main class="workspace" id="workspace-metasprite" style="display: none;">
+      <!-- Left Panel: Metasprite Parts selection -->
+      <aside class="panel tools-panel" id="metasprite-tools">
+        <div class="panel-section">
+          <h3>スプライト操作</h3>
+          <button id="btn-metasprite-add-part" class="btn-action btn-primary" style="width: 100%; margin-bottom: 10px; display: flex; align-items: center; justify-content: center; gap: 6px;">
+            <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+            パーツを追加
+          </button>
+          <div class="toggle-control">
+            <label class="switch">
+              <input type="checkbox" id="chk-metasprite-size8x16">
+              <span class="slider"></span>
+            </label>
+            <span>8x16 スプライトモード</span>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <h3>パーツ用タイル選択</h3>
+          <div id="metasprite-tileset-list" class="tileset-grid-container" style="max-height: 320px; overflow-y: auto;">
+            <!-- Tileset list same as map editor -->
+          </div>
+        </div>
+      </aside>
+
+      <div class="resizer" id="resizer-metasprite-left"></div>
+
+      <!-- Center Panel: Metasprite Canvas -->
+      <section class="center-workspace">
+        <div class="canvas-wrapper" id="metasprite-canvas-wrapper">
+          <div class="canvas-container" id="metasprite-canvas-container">
+            <canvas id="metasprite-canvas" width="512" height="512"></canvas>
+          </div>
+          <div class="canvas-zoom-controls" style="background: rgba(15,23,42,0.85);">
+            <span id="metasprite-drag-info" style="font-size: 11px; color: #888;">ドラッグして移動。矢印キーで1px微調整。</span>
+          </div>
+        </div>
+      </section>
+
+      <div class="resizer" id="resizer-metasprite-right"></div>
+
+      <!-- Right Panel: Metasprite Layers / Properties & Export -->
+      <aside class="panel sidebar-panel" id="metasprite-sidebar">
+        <div class="panel-section" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; max-height: 250px;">
+          <h3>スプライトパーツ (OAMレイヤー)</h3>
+          <div id="metasprite-parts-list" style="flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; margin-top: 5px;">
+            <!-- Dynamically populated parts list -->
+          </div>
+        </div>
+
+        <div class="panel-section" id="metasprite-part-properties" style="display: none; background: rgba(255,255,255,0.02); padding: 10px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.05);">
+          <h4 style="margin-top: 0; font-size: 12px; color: #10b981; margin-bottom: 8px;">選択パーツの属性</h4>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 8px;">
+            <div>
+              <label style="font-size: 10px; color: #888; display: block; margin-bottom: 2px;">Xオフセット (dx)</label>
+              <input type="number" id="metasprite-part-x" min="-128" max="127" style="width: 100%; padding: 4px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 12px;">
+            </div>
+            <div>
+              <label style="font-size: 10px; color: #888; display: block; margin-bottom: 2px;">Yオフセット (dy)</label>
+              <input type="number" id="metasprite-part-y" min="-128" max="127" style="width: 100%; padding: 4px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 12px;">
+            </div>
+          </div>
+          <div style="display: flex; gap: 10px; margin-bottom: 8px;">
+            <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+              <input type="checkbox" id="metasprite-part-hflip"> H-Flip
+            </label>
+            <label style="display: flex; align-items: center; gap: 4px; font-size: 11px; cursor: pointer;">
+              <input type="checkbox" id="metasprite-part-vflip"> V-Flip
+            </label>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <label style="font-size: 11px; color: #aaa;">パレット番号:</label>
+            <select id="metasprite-part-palette" style="padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 11px;">
+              <option value="0">パレット 0</option>
+              <option value="1">パレット 1</option>
+              <option value="2">パレット 2</option>
+              <option value="3">パレット 3</option>
+              <option value="4">パレット 4</option>
+              <option value="5">パレット 5</option>
+              <option value="6">パレット 6</option>
+              <option value="7">パレット 7</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <h3>GBDK / metasprite_t 出力</h3>
+          <div class="textarea-wrapper">
+            <textarea id="metasprite-code-io" placeholder="ここにメタスプライト構造体コードを貼り付けてインポートするか、生成されたコードをコピーします。" style="height: 110px; font-family: 'Share Tech Mono', monospace; font-size: 10px;"></textarea>
+          </div>
+          <div class="io-actions" style="margin-top: 8px; display: flex; gap: 6px;">
+            <button id="btn-metasprite-import-c" class="btn-action btn-primary" style="flex: 1; font-size: 11px;">インポート</button>
+            <button id="btn-metasprite-export-c" class="btn-action" style="flex: 1; font-size: 11px;">C配列生成</button>
           </div>
         </div>
       </aside>
