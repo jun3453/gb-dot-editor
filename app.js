@@ -12,13 +12,47 @@ let canvasSize = 16; // 8, 16, 32, 64, 128, 256
 let frames = [];     // Array of { id: number, data: Uint8Array }
 let currentFrameIndex = 0;
 let activeTheme = 'classic';
-let activeColorIndex = 0; // 0, 1, 2, 3
-let activeTool = 'pen';   // 'pen', 'eraser', 'fill', 'picker'
+let primaryColorIndex = 3;   // Left click color (default Black/Dark)
+let secondaryColorIndex = 0; // Right click color (default White/Light)
+let activeTool = 'pen';      // 'pen', 'eraser', 'fill', 'picker'
 let isDrawing = false;
+let drawingButton = null;    // Tracks drawing mouse button (0: left, 2: right)
 let showGridPixel = true;
 let showGridTile = true;
 let showOnionSkin = false;
 let gridPixelColor = localStorage.getItem('gb_grid_pixel_color') || '#888888';
+
+let previewZoom = 4;
+let previewBlurEnabled = false;
+
+// Selection State
+let selection = {
+  active: false,
+  startX: 0,
+  startY: 0,
+  endX: 0,
+  endY: 0,
+  buffer: null,
+  bufferWidth: 0,
+  bufferHeight: 0,
+  isFloating: false,
+  floatingX: 0,
+  floatingY: 0,
+  floatingData: null
+};
+let lineDashOffset = 0;
+let antsInterval = null;
+
+// Drag state for floating selection
+let isSelecting = false;
+let isDraggingFloating = false;
+let dragStartX = 0;
+let dragStartY = 0;
+let originalFloatingX = 0;
+let originalFloatingY = 0;
+
+// Offscreen canvas for preview rendering
+let previewTempCanvas = null;
 
 // Undo/Redo Stacks
 let undoStack = [];
@@ -85,6 +119,10 @@ const btnExportJson = document.getElementById('btn-export-json');
 const inputImportJson = document.getElementById('input-import-json');
 const btnExportPngCurrent = document.getElementById('btn-export-png-current');
 const btnExportPngSheet = document.getElementById('btn-export-png-sheet');
+const btnExportGif = document.getElementById('btn-export-gif');
+const chkPreviewBlur = document.getElementById('chk-preview-blur');
+const previewContainer = document.getElementById('preview-container');
+const toolSelect = document.getElementById('tool-select');
 
 // Tabs control
 const tabButtons = document.querySelectorAll('.tab-btn');
@@ -114,6 +152,7 @@ function resetEditor(size) {
   
   // Initial draw
   updateUI();
+  updatePreviewZoom(4); // Default to 4x zoom
 }
 
 function generateId() {
@@ -189,6 +228,7 @@ function updateUI() {
   renderTimeline();
   drawPreview();
   updateExportTab();
+  updateColorSwatches();
 }
 
 // Main Editor Canvas Drawing
@@ -226,6 +266,24 @@ function drawMainCanvas() {
     }
   }
   
+  // 2.1 Draw Floating Paste Data (if any)
+  if (selection.isFloating && selection.floatingData) {
+    editorCtx.save();
+    editorCtx.globalAlpha = 0.8; // Blend paste preview
+    for (let y = 0; y < selection.bufferHeight; y++) {
+      for (let x = 0; x < selection.bufferWidth; x++) {
+        const canvasX = selection.floatingX + x;
+        const canvasY = selection.floatingY + y;
+        if (canvasX >= 0 && canvasX < canvasSize && canvasY >= 0 && canvasY < canvasSize) {
+          const colorIdx = selection.floatingData[y * selection.bufferWidth + x];
+          editorCtx.fillStyle = colors[colorIdx];
+          editorCtx.fillRect(canvasX * pixelSize, canvasY * pixelSize, pixelSize, pixelSize);
+        }
+      }
+    }
+    editorCtx.restore();
+  }
+  
   // 3. Draw Grid Lines
   editorCtx.lineWidth = 1;
   
@@ -260,6 +318,38 @@ function drawMainCanvas() {
       editorCtx.lineTo(CANVAS_DISPLAY_SIZE, pos);
     }
     editorCtx.stroke();
+  }
+  
+  // 4. Draw Active Selection Border
+  if (selection.active) {
+    editorCtx.strokeStyle = '#3b82f6'; // Blue for selection
+    editorCtx.lineWidth = 2;
+    editorCtx.setLineDash([6, 4]);
+    editorCtx.lineDashOffset = lineDashOffset;
+    
+    const x1 = Math.min(selection.startX, selection.endX);
+    const y1 = Math.min(selection.startY, selection.endY);
+    const w = Math.abs(selection.startX - selection.endX) + 1;
+    const h = Math.abs(selection.startY - selection.endY) + 1;
+    
+    editorCtx.strokeRect(x1 * pixelSize, y1 * pixelSize, w * pixelSize, h * pixelSize);
+    editorCtx.setLineDash([]); // Reset
+  }
+
+  // 5. Draw Floating Selection Border
+  if (selection.isFloating && selection.floatingData) {
+    editorCtx.strokeStyle = '#f59e0b'; // Amber for floating data
+    editorCtx.lineWidth = 2;
+    editorCtx.setLineDash([4, 4]);
+    editorCtx.lineDashOffset = -lineDashOffset;
+    
+    editorCtx.strokeRect(
+      selection.floatingX * pixelSize,
+      selection.floatingY * pixelSize,
+      selection.bufferWidth * pixelSize,
+      selection.bufferHeight * pixelSize
+    );
+    editorCtx.setLineDash([]); // Reset
   }
 }
 
@@ -345,10 +435,11 @@ function selectFrame(index) {
 
 // --- Live Preview Animation Engine ---
 function drawPreview() {
-  previewCanvas.width = canvasSize;
-  previewCanvas.height = canvasSize;
-  previewCanvas.style.width = '128px';
-  previewCanvas.style.height = '128px';
+  // Keep internal canvas dimensions matching canvasSize
+  if (previewCanvas.width !== canvasSize || previewCanvas.height !== canvasSize) {
+    previewCanvas.width = canvasSize;
+    previewCanvas.height = canvasSize;
+  }
   
   const colors = PALETTE_THEMES[activeTheme];
   let targetFrameIdx = currentFrameIndex;
@@ -360,13 +451,35 @@ function drawPreview() {
   const frame = frames[targetFrameIdx];
   if (!frame) return;
   
-  previewCtx.clearRect(0, 0, canvasSize, canvasSize);
+  // Create offscreen canvas for rendering single frame
+  if (!previewTempCanvas) {
+    previewTempCanvas = document.createElement('canvas');
+  }
+  if (previewTempCanvas.width !== canvasSize || previewTempCanvas.height !== canvasSize) {
+    previewTempCanvas.width = canvasSize;
+    previewTempCanvas.height = canvasSize;
+  }
+  const tempCtx = previewTempCanvas.getContext('2d');
+  
+  // Draw current target frame to temp canvas
+  tempCtx.clearRect(0, 0, canvasSize, canvasSize);
   for (let y = 0; y < canvasSize; y++) {
     for (let x = 0; x < canvasSize; x++) {
       const colorIdx = frame.data[y * canvasSize + x];
-      previewCtx.fillStyle = colors[colorIdx];
-      previewCtx.fillRect(x, y, 1, 1);
+      tempCtx.fillStyle = colors[colorIdx];
+      tempCtx.fillRect(x, y, 1, 1);
     }
+  }
+  
+  // Draw temp canvas to main preview canvas with optional blend blur
+  if (previewBlurEnabled && isPlaying) {
+    // Overwrite with alpha to achieve phosphor response ghosting
+    previewCtx.globalAlpha = 0.45;
+    previewCtx.drawImage(previewTempCanvas, 0, 0);
+    previewCtx.globalAlpha = 1.0; // Restore
+  } else {
+    previewCtx.clearRect(0, 0, canvasSize, canvasSize);
+    previewCtx.drawImage(previewTempCanvas, 0, 0);
   }
 }
 
@@ -426,19 +539,20 @@ function handleDrawEvent(e) {
   const y = Math.floor(mouseY / pixelSize);
   
   if (x >= 0 && x < canvasSize && y >= 0 && y < canvasSize) {
-    executeToolAction(x, y);
+    executeToolAction(x, y, drawingButton);
   }
 }
 
-function executeToolAction(x, y) {
+function executeToolAction(x, y, button) {
   const currentFrame = frames[currentFrameIndex];
   if (!currentFrame) return;
   
   const targetIndex = y * canvasSize + x;
+  const colorIndex = (button === 2) ? secondaryColorIndex : primaryColorIndex;
   
   if (activeTool === 'pen') {
-    if (currentFrame.data[targetIndex] !== activeColorIndex) {
-      currentFrame.data[targetIndex] = activeColorIndex;
+    if (currentFrame.data[targetIndex] !== colorIndex) {
+      currentFrame.data[targetIndex] = colorIndex;
       drawMainCanvas();
     }
   } else if (activeTool === 'eraser') {
@@ -447,14 +561,19 @@ function executeToolAction(x, y) {
       drawMainCanvas();
     }
   } else if (activeTool === 'picker') {
-    activeColorIndex = currentFrame.data[targetIndex];
+    const pickedColorIdx = currentFrame.data[targetIndex];
+    if (button === 2) {
+      secondaryColorIndex = pickedColorIdx;
+    } else {
+      primaryColorIndex = pickedColorIdx;
+    }
     updateColorSwatches();
     // Switch tool back to pen
     setActiveTool('pen');
   } else if (activeTool === 'fill') {
     const prevColor = currentFrame.data[targetIndex];
-    if (prevColor !== activeColorIndex) {
-      floodFill(x, y, prevColor, activeColorIndex);
+    if (prevColor !== colorIndex) {
+      floodFill(x, y, prevColor, colorIndex);
       drawMainCanvas();
     }
   }
@@ -897,22 +1016,152 @@ function setupEventListeners() {
     }
   });
   
+  // Disable default context menu on canvas
+  editorCanvas.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+  });
+
   // Drawing Canvas Listeners
   editorCanvas.addEventListener('mousedown', (e) => {
-    if (e.button !== 0) return; // Left click only
+    const rect = editorCanvas.getBoundingClientRect();
+    const scaleX = editorCanvas.width / rect.width;
+    const scaleY = editorCanvas.height / rect.height;
+    const pixelSize = CANVAS_DISPLAY_SIZE / canvasSize;
+    
+    const mouseX = (e.clientX - rect.left) * scaleX;
+    const mouseY = (e.clientY - rect.top) * scaleY;
+    const x = Math.floor(mouseX / pixelSize);
+    const y = Math.floor(mouseY / pixelSize);
+    
+    if (x < 0 || x >= canvasSize || y < 0 || y >= canvasSize) return;
+    
+    if (activeTool === 'select') {
+      if (e.button !== 0 && e.button !== 2) return; // Left/Right click only
+      
+      const x1 = Math.min(selection.startX, selection.endX);
+      const y1 = Math.min(selection.startY, selection.endY);
+      const x2 = Math.max(selection.startX, selection.endX);
+      const y2 = Math.max(selection.startY, selection.endY);
+      const isInsideSelection = selection.active && x >= x1 && x <= x2 && y >= y1 && y <= y2;
+
+      // Check if clicked inside floating data
+      if (selection.isFloating &&
+          x >= selection.floatingX && x < selection.floatingX + selection.bufferWidth &&
+          y >= selection.floatingY && y < selection.floatingY + selection.bufferHeight) {
+        isDraggingFloating = true;
+        dragStartX = x;
+        dragStartY = y;
+        originalFloatingX = selection.floatingX;
+        originalFloatingY = selection.floatingY;
+      }
+      // Check if clicked inside active selection to lift and drag it (Left Click only)
+      else if (isInsideSelection && e.button === 0) {
+        copySelection();
+        
+        const currentFrame = frames[currentFrameIndex];
+        if (currentFrame) {
+          for (let sy = y1; sy <= y2; sy++) {
+            for (let sx = x1; sx <= x2; sx++) {
+              currentFrame.data[sy * canvasSize + sx] = 0; // Clear original pixels
+            }
+          }
+        }
+        
+        selection.active = false;
+        selection.isFloating = true;
+        selection.floatingX = x1;
+        selection.floatingY = y1;
+        selection.floatingData = new Uint8Array(selection.buffer);
+        
+        isDraggingFloating = true;
+        dragStartX = x;
+        dragStartY = y;
+        originalFloatingX = x1;
+        originalFloatingY = y1;
+        
+        saveHistory();
+        startAntsAnimation();
+      }
+      else {
+        // If clicked outside and was floating, confirm it
+        if (selection.isFloating) {
+          confirmSelection();
+        }
+        // Start drawing new selection rectangle
+        isSelecting = true;
+        selection.active = true;
+        selection.startX = x;
+        selection.startY = y;
+        selection.endX = x;
+        selection.endY = y;
+        startAntsAnimation();
+      }
+      drawMainCanvas();
+      return;
+    }
+    
+    // If was floating and switch to other tool clicked, confirm
+    if (selection.isFloating) {
+      confirmSelection();
+    }
+    
+    if (e.button !== 0 && e.button !== 2) return; // Left (0) and Right (2) clicks only
     isDrawing = true;
+    drawingButton = e.button;
     handleDrawEvent(e);
   });
   
   editorCanvas.addEventListener('mousemove', (e) => {
+    const rect = editorCanvas.getBoundingClientRect();
+    const scaleX = editorCanvas.width / rect.width;
+    const scaleY = editorCanvas.height / rect.height;
+    const pixelSize = CANVAS_DISPLAY_SIZE / canvasSize;
+    
+    const mouseX = (e.clientX - rect.left) * scaleX;
+    const mouseY = (e.clientY - rect.top) * scaleY;
+    const x = Math.floor(mouseX / pixelSize);
+    const y = Math.floor(mouseY / pixelSize);
+    
+    if (activeTool === 'select') {
+      if (isDraggingFloating) {
+        const dx = x - dragStartX;
+        const dy = y - dragStartY;
+        selection.floatingX = originalFloatingX + dx;
+        selection.floatingY = originalFloatingY + dy;
+        drawMainCanvas();
+      } else if (isSelecting && (x >= 0 && x < canvasSize && y >= 0 && y < canvasSize)) {
+        selection.endX = x;
+        selection.endY = y;
+        drawMainCanvas();
+      }
+      return;
+    }
+    
     if (isDrawing) {
       handleDrawEvent(e);
     }
   });
   
   window.addEventListener('mouseup', () => {
+    if (activeTool === 'select') {
+      if (isDraggingFloating) {
+        isDraggingFloating = false;
+      }
+      if (isSelecting) {
+        isSelecting = false;
+        // If it's a single click (no drag), cancel selection
+        if (selection.startX === selection.endX && selection.startY === selection.endY) {
+          selection.active = false;
+          stopAntsAnimation();
+          drawMainCanvas();
+        }
+      }
+      return;
+    }
+    
     if (isDrawing) {
       isDrawing = false;
+      drawingButton = null;
       saveHistory(); // Save action after pointer up
       updateUI();
     }
@@ -923,6 +1172,7 @@ function setupEventListeners() {
   toolEraser.addEventListener('click', () => setActiveTool('eraser'));
   toolFill.addEventListener('click', () => setActiveTool('fill'));
   toolPicker.addEventListener('click', () => setActiveTool('picker'));
+  toolSelect.addEventListener('click', () => setActiveTool('select'));
   
   // Actions
   actionFlipH.addEventListener('click', flipHorizontal);
@@ -977,15 +1227,59 @@ function setupEventListeners() {
     }
     
     const ctrlOrCmd = e.ctrlKey || e.metaKey;
+    const key = e.key.toLowerCase();
     
-    if (ctrlOrCmd && e.key.toLowerCase() === 'z') {
+    if (ctrlOrCmd && key === 'z') {
       e.preventDefault();
       undo();
-    } else if (ctrlOrCmd && e.key.toLowerCase() === 'y') {
+    } else if (ctrlOrCmd && key === 'y') {
       e.preventDefault();
       redo();
+    } else if (ctrlOrCmd && key === 'c') {
+      e.preventDefault();
+      copySelection();
+    } else if (ctrlOrCmd && key === 'x') {
+      e.preventDefault();
+      cutSelection();
+    } else if (ctrlOrCmd && key === 'v') {
+      e.preventDefault();
+      pasteSelection();
+    } else if (e.key === 'Escape') {
+      e.preventDefault();
+      cancelSelection();
+    } else if (e.key === 'Enter') {
+      e.preventDefault();
+      confirmSelection();
     } else {
-      switch (e.key.toLowerCase()) {
+      // Palette color selections (1-4 keys)
+      if (key >= '1' && key <= '4') {
+        e.preventDefault();
+        const colorIdx = parseInt(key) - 1;
+        if (e.shiftKey) {
+          secondaryColorIndex = colorIdx;
+        } else {
+          primaryColorIndex = colorIdx;
+        }
+        updateColorSwatches();
+        return;
+      }
+      
+      // Frame navigation ([ and ])
+      if (e.key === '[') {
+        e.preventDefault();
+        if (currentFrameIndex > 0) {
+          selectFrame(currentFrameIndex - 1);
+        }
+        return;
+      } else if (e.key === ']') {
+        e.preventDefault();
+        if (currentFrameIndex < frames.length - 1) {
+          selectFrame(currentFrameIndex + 1);
+        }
+        return;
+      }
+      
+      switch (key) {
         case 'p':
           setActiveTool('pen');
           break;
@@ -997,6 +1291,22 @@ function setupEventListeners() {
           break;
         case 'i':
           setActiveTool('picker');
+          break;
+        case 's':
+          setActiveTool('select');
+          break;
+        case 'n':
+          e.preventDefault();
+          addFrame();
+          break;
+        case 'd':
+          e.preventDefault();
+          duplicateFrame();
+          break;
+        case 'backspace':
+        case 'delete':
+          e.preventDefault();
+          deleteFrame();
           break;
         case ' ': // Space key to toggle animation playback
           e.preventDefault();
@@ -1022,11 +1332,21 @@ function setupEventListeners() {
     updateUI();
   });
   
-  // Swatches Selection
+  // Prevent context menu on color swatches to allow right-click selection
   colorSwatches.forEach(swatch => {
-    swatch.addEventListener('click', () => {
-      activeColorIndex = parseInt(swatch.dataset.colorIdx);
-      updateColorSwatches();
+    swatch.addEventListener('contextmenu', (e) => {
+      e.preventDefault();
+    });
+    
+    swatch.addEventListener('mousedown', (e) => {
+      const colorIdx = parseInt(swatch.dataset.colorIdx);
+      if (e.button === 0) { // Left click
+        primaryColorIndex = colorIdx;
+        updateColorSwatches();
+      } else if (e.button === 2) { // Right click
+        secondaryColorIndex = colorIdx;
+        updateColorSwatches();
+      }
     });
   });
   
@@ -1065,6 +1385,20 @@ function setupEventListeners() {
   
   btnExportPngCurrent.addEventListener('click', exportPngCurrent);
   btnExportPngSheet.addEventListener('click', exportPngSheet);
+  btnExportGif.addEventListener('click', exportGif);
+  
+  // Zoom control
+  document.querySelectorAll('.btn-zoom').forEach(btn => {
+    btn.addEventListener('click', (e) => {
+      const zoom = parseInt(e.target.dataset.zoom);
+      updatePreviewZoom(zoom);
+    });
+  });
+  
+  // Preview blur (ghosting) toggle
+  chkPreviewBlur.addEventListener('change', (e) => {
+    previewBlurEnabled = e.target.checked;
+  });
   
   // Tabs Control
   tabButtons.forEach(btn => {
@@ -1084,25 +1418,251 @@ function setupEventListeners() {
 }
 
 function setActiveTool(tool) {
+  // If we are leaving select tool, confirm floating data first and cancel selection border
+  if (activeTool === 'select' && tool !== 'select') {
+    if (selection.isFloating) {
+      confirmSelection();
+    }
+    selection.active = false;
+    stopAntsAnimation();
+    drawMainCanvas();
+  }
+  
   activeTool = tool;
   
   toolPen.classList.remove('active');
   toolEraser.classList.remove('active');
   toolFill.classList.remove('active');
   toolPicker.classList.remove('active');
+  toolSelect.classList.remove('active');
   
   if (tool === 'pen') toolPen.classList.add('active');
   else if (tool === 'eraser') toolEraser.classList.add('active');
   else if (tool === 'fill') toolFill.classList.add('active');
   else if (tool === 'picker') toolPicker.classList.add('active');
+  else if (tool === 'select') toolSelect.classList.add('active');
+}
+
+// --- Selection Actions & Helpers ---
+function startAntsAnimation() {
+  if (antsInterval) return;
+  antsInterval = setInterval(() => {
+    lineDashOffset = (lineDashOffset + 0.5) % 10;
+    if (selection.active || selection.isFloating) {
+      drawMainCanvas();
+    } else {
+      stopAntsAnimation();
+    }
+  }, 60);
+}
+
+function stopAntsAnimation() {
+  if (antsInterval) {
+    clearInterval(antsInterval);
+    antsInterval = null;
+  }
+}
+
+function copySelection() {
+  if (!selection.active) return;
+  
+  const x1 = Math.min(selection.startX, selection.endX);
+  const y1 = Math.min(selection.startY, selection.endY);
+  const x2 = Math.max(selection.startX, selection.endX);
+  const y2 = Math.max(selection.startY, selection.endY);
+  
+  const w = x2 - x1 + 1;
+  const h = y2 - y1 + 1;
+  
+  const currentFrame = frames[currentFrameIndex];
+  if (!currentFrame) return;
+  
+  selection.buffer = new Uint8Array(w * h);
+  selection.bufferWidth = w;
+  selection.bufferHeight = h;
+  
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      selection.buffer[y * w + x] = currentFrame.data[(y1 + y) * canvasSize + (x1 + x)];
+    }
+  }
+}
+
+function cutSelection() {
+  if (!selection.active) return;
+  copySelection();
+  
+  const x1 = Math.min(selection.startX, selection.endX);
+  const y1 = Math.min(selection.startY, selection.endY);
+  const x2 = Math.max(selection.startX, selection.endX);
+  const y2 = Math.max(selection.startY, selection.endY);
+  
+  const currentFrame = frames[currentFrameIndex];
+  if (!currentFrame) return;
+  
+  for (let y = y1; y <= y2; y++) {
+    for (let x = x1; x <= x2; x++) {
+      currentFrame.data[y * canvasSize + x] = 0; // Clear to background (white)
+    }
+  }
+  
+  selection.active = false;
+  stopAntsAnimation();
+  
+  saveHistory();
+  updateUI();
+}
+
+function pasteSelection() {
+  if (!selection.buffer) return;
+  
+  if (selection.isFloating) {
+    confirmSelection();
+  }
+  
+  selection.active = false;
+  selection.isFloating = true;
+  selection.floatingX = Math.floor((canvasSize - selection.bufferWidth) / 2);
+  selection.floatingY = Math.floor((canvasSize - selection.bufferHeight) / 2);
+  selection.floatingData = new Uint8Array(selection.buffer);
+  
+  startAntsAnimation();
+  drawMainCanvas();
+}
+
+function confirmSelection() {
+  if (!selection.isFloating || !selection.floatingData) return;
+  
+  const currentFrame = frames[currentFrameIndex];
+  if (!currentFrame) return;
+  
+  for (let y = 0; y < selection.bufferHeight; y++) {
+    for (let x = 0; x < selection.bufferWidth; x++) {
+      const canvasX = selection.floatingX + x;
+      const canvasY = selection.floatingY + y;
+      if (canvasX >= 0 && canvasX < canvasSize && canvasY >= 0 && canvasY < canvasSize) {
+        currentFrame.data[canvasY * canvasSize + canvasX] = selection.floatingData[y * selection.bufferWidth + x];
+      }
+    }
+  }
+  
+  selection.isFloating = false;
+  selection.floatingData = null;
+  stopAntsAnimation();
+  
+  saveHistory();
+  updateUI();
+}
+
+function cancelSelection() {
+  if (selection.isFloating) {
+    selection.isFloating = false;
+    selection.floatingData = null;
+    stopAntsAnimation();
+    drawMainCanvas();
+  } else if (selection.active) {
+    selection.active = false;
+    stopAntsAnimation();
+    drawMainCanvas();
+  }
+}
+
+// --- Preview Zoom Action ---
+function updatePreviewZoom(zoom) {
+  previewZoom = zoom;
+  document.querySelectorAll('.btn-zoom').forEach(btn => {
+    if (parseInt(btn.dataset.zoom) === zoom) {
+      btn.classList.add('active');
+    } else {
+      btn.classList.remove('active');
+    }
+  });
+  
+  if (previewContainer) {
+    previewContainer.style.setProperty('--preview-zoom', `${zoom}px`);
+  }
+  
+  const width = canvasSize * zoom;
+  const height = canvasSize * zoom;
+  previewCanvas.style.width = `${width}px`;
+  previewCanvas.style.height = `${height}px`;
+}
+
+// --- GIF Export ---
+function exportGif() {
+  if (typeof gifshot === 'undefined') {
+    alert("GIF生成ライブラリ (gifshot) が読み込まれていません。インターネット接続状況を確認してください。");
+    return;
+  }
+  
+  if (frames.length === 0) {
+    alert("フレームが存在しません。");
+    return;
+  }
+  
+  const originalText = btnExportGif.innerText;
+  btnExportGif.innerText = "生成中...";
+  btnExportGif.disabled = true;
+  
+  const colors = PALETTE_THEMES[activeTheme];
+  const imageSize = Math.max(128, canvasSize * 8); // Upscale for clean output
+  
+  const exportCanvas = document.createElement('canvas');
+  exportCanvas.width = imageSize;
+  exportCanvas.height = imageSize;
+  const ctx = exportCanvas.getContext('2d');
+  ctx.imageRendering = 'pixelated';
+  
+  const pixelSize = imageSize / canvasSize;
+  const frameImages = [];
+  
+  frames.forEach((frame) => {
+    ctx.clearRect(0, 0, imageSize, imageSize);
+    for (let y = 0; y < canvasSize; y++) {
+      for (let x = 0; x < canvasSize; x++) {
+        const colorIdx = frame.data[y * canvasSize + x];
+        ctx.fillStyle = colors[colorIdx];
+        ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+      }
+    }
+    frameImages.push(exportCanvas.toDataURL());
+  });
+  
+  gifshot.createGIF({
+    images: frameImages,
+    gifWidth: imageSize,
+    gifHeight: imageSize,
+    interval: 1 / fps,
+    numFrames: frames.length,
+    sampleInterval: 10
+  }, function(obj) {
+    btnExportGif.innerText = originalText;
+    btnExportGif.disabled = false;
+    
+    if (!obj.error) {
+      triggerDownload(obj.image, `gb_animation_${canvasSize}x${canvasSize}_${Date.now()}.gif`);
+    } else {
+      alert("GIFアニメーションの生成に失敗しました: " + obj.error);
+    }
+  });
 }
 
 function updateColorSwatches() {
   colorSwatches.forEach(sw => {
-    if (parseInt(sw.dataset.colorIdx) === activeColorIndex) {
-      sw.classList.add('active');
+    const colorIdx = parseInt(sw.dataset.colorIdx);
+    
+    // Primary (left click) active state
+    if (colorIdx === primaryColorIndex) {
+      sw.classList.add('active-primary');
     } else {
-      sw.classList.remove('active');
+      sw.classList.remove('active-primary');
+    }
+    
+    // Secondary (right click) active state
+    if (colorIdx === secondaryColorIndex) {
+      sw.classList.add('active-secondary');
+    } else {
+      sw.classList.remove('active-secondary');
     }
   });
 }

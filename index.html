@@ -52,6 +52,10 @@
               <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="m2 22 1-1h3l9-9-3-3-9 9v3Z"/><path d="M11.5 6.5 14 4a2.5 2.5 0 0 1 3.5 0l2.5 2.5a2.5 2.5 0 0 1 0 3.5l-2.5 2.5-3-3Z"/></svg>
               <span>スポイト</span>
             </button>
+            <button id="tool-select" class="btn-tool" title="選択範囲 (S)">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-dasharray="3 3"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/></svg>
+              <span>選択範囲</span>
+            </button>
           </div>
         </div>
 
@@ -177,21 +181,29 @@
             <button id="palette-pocket" class="btn-theme">ポケット</button>
           </div>
           <div class="palette-colors">
-            <button class="color-swatch active" data-color-idx="0" title="白/ライト (Index 0)">
+            <button class="color-swatch active-secondary" data-color-idx="0" title="白/ライト (Index 0)">
               <span class="color-preview" style="background-color: #e0f8d0;"></span>
               <span class="color-label">Index 0</span>
+              <span class="swatch-indicator primary-indicator">L</span>
+              <span class="swatch-indicator secondary-indicator">R</span>
             </button>
             <button class="color-swatch" data-color-idx="1" title="薄いグレー (Index 1)">
               <span class="color-preview" style="background-color: #88c070;"></span>
               <span class="color-label">Index 1</span>
+              <span class="swatch-indicator primary-indicator">L</span>
+              <span class="swatch-indicator secondary-indicator">R</span>
             </button>
             <button class="color-swatch" data-color-idx="2" title="濃いグレー (Index 2)">
               <span class="color-preview" style="background-color: #346856;"></span>
               <span class="color-label">Index 2</span>
+              <span class="swatch-indicator primary-indicator">L</span>
+              <span class="swatch-indicator secondary-indicator">R</span>
             </button>
-            <button class="color-swatch" data-color-idx="3" title="黒/ダーク (Index 3)">
+            <button class="color-swatch active-primary" data-color-idx="3" title="黒/ダーク (Index 3)">
               <span class="color-preview" style="background-color: #081820;"></span>
               <span class="color-label">Index 3</span>
+              <span class="swatch-indicator primary-indicator">L</span>
+              <span class="swatch-indicator secondary-indicator">R</span>
             </button>
           </div>
         </div>
@@ -199,11 +211,30 @@
         <!-- Live Preview -->
         <div class="panel-section">
           <h3>リアルタイムプレビュー</h3>
-          <div class="preview-container">
-            <canvas id="preview-canvas" width="128" height="128"></canvas>
+          <div class="preview-container-wrapper">
+            <div class="preview-container zoom-4x" id="preview-container">
+              <canvas id="preview-canvas" width="128" height="128"></canvas>
+              <div class="preview-overlay-lcd" id="preview-overlay"></div>
+            </div>
+          </div>
+          <div class="preview-options">
+            <div class="zoom-controls">
+              <span class="control-label">ズーム:</span>
+              <button class="btn-zoom" data-zoom="1">1x</button>
+              <button class="btn-zoom" data-zoom="2">2x</button>
+              <button class="btn-zoom active" data-zoom="4">4x</button>
+              <button class="btn-zoom" data-zoom="8">8x</button>
+            </div>
+            <div class="toggle-control">
+              <label class="switch">
+                <input type="checkbox" id="chk-preview-blur">
+                <span class="slider"></span>
+              </label>
+              <span>液晶残像</span>
+            </div>
           </div>
           <div class="preview-controls">
-            <button id="btn-play-pause" class="btn-action" title="アニメーション再生/一時停止">
+            <button id="btn-play-pause" class="btn-action" title="アニメーション再生/一時停止 (Space)">
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" id="play-icon"><polygon points="5 3 19 12 5 21 5 3"/></svg>
               <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" id="pause-icon" class="hidden"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
               <span id="play-btn-text">再生</span>
@@ -249,10 +280,11 @@
                 </div>
               </div>
               <div class="file-io-group">
-                <h4>画像保存 (PNG)</h4>
-                <div class="io-actions">
-                  <button id="btn-export-png-current" class="btn-action">現フレーム保存</button>
-                  <button id="btn-export-png-sheet" class="btn-action">スプライトシート保存</button>
+                <h4>画像・アニメ保存</h4>
+                <div class="io-actions-grid">
+                  <button id="btn-export-png-current" class="btn-action" title="現在のフレームをPNG画像として保存">PNG現フレーム</button>
+                  <button id="btn-export-png-sheet" class="btn-action" title="全フレームをスプライトシートとして保存">PNGシート</button>
+                  <button id="btn-export-gif" class="btn-action btn-primary" title="全フレームをGIFアニメーションとして保存">GIFアニメ保存</button>
                 </div>
               </div>
             </div>
@@ -262,6 +294,7 @@
     </main>
   </div>
 
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/gifshot/0.4.5/gifshot.min.js"></script>
   <script src="app.js"></script>
 </body>
 </html>
