@@ -361,9 +361,7 @@ input:checked + .slider:before {
 .canvas-wrapper {
   flex: 1;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
+  padding: 120px;
   overflow: auto;
   position: relative; /* Floating controls anchor */
 }
@@ -381,12 +379,16 @@ input:checked + .slider:before {
   width: var(--canvas-display-width, 512px);
   height: var(--canvas-display-height, 512px);
   box-sizing: content-box;
+  flex-shrink: 0;
+  margin: auto;
 }
 
 /* Fit to screen mode */
 .canvas-wrapper.fit-mode {
   overflow: hidden;
+  padding: 16px;
 }
+
 
 .canvas-wrapper.fit-mode .canvas-container {
   width: auto;
@@ -1064,6 +1066,8 @@ input:checked + .slider:before {
   bottom: 16px;
   right: 16px;
   display: flex;
+
+
   align-items: center;
   gap: 6px;
   background: rgba(15, 23, 42, 0.75);
@@ -1325,5 +1329,24 @@ input:checked + .slider:before {
   appearance: none;
   -webkit-appearance: none;
 }
+
+/* Metasprite Canvas backgrounds */
+.bg-checker {
+  background-color: #1a1a1a !important;
+  background-image: 
+    linear-gradient(45deg, #2a2a2a 25%, transparent 25%, transparent 75%, #2a2a2a 75%),
+    linear-gradient(45deg, #2a2a2a 25%, transparent 25%, transparent 75%, #2a2a2a 75%) !important;
+  background-size: 16px 16px !important;
+  background-position: 0 0, 8px 8px !important;
+}
+.bg-dark {
+  background-color: #0b0f19 !important;
+  background-image: none !important;
+}
+.bg-light {
+  background-color: #e5e7eb !important;
+  background-image: none !important;
+}
+
 
 

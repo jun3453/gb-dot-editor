@@ -182,6 +182,9 @@ const metaspriteCanvas = document.getElementById('metasprite-canvas');
 const metaspriteCtx = metaspriteCanvas ? metaspriteCanvas.getContext('2d') : null;
 const btnMetaspriteAddPart = document.getElementById('btn-metasprite-add-part');
 const chkMetaspriteSize8x16 = document.getElementById('chk-metasprite-size8x16');
+const chkMetaspriteGrid = document.getElementById('chk-metasprite-grid');
+const chkMetaspriteSnap = document.getElementById('chk-metasprite-snap');
+const selMetaspriteBg = document.getElementById('sel-metasprite-bg');
 const metaspriteTilesetList = document.getElementById('metasprite-tileset-list');
 const metaspritePartsList = document.getElementById('metasprite-parts-list');
 const metaspritePartProperties = document.getElementById('metasprite-part-properties');
@@ -1384,23 +1387,70 @@ function generateGBDK2020Code() {
 }
 
 function importGBDK2020Code(cCodeText) {
-  // Regex to match Hex values (e.g. 0x3C, 3C)
-  const hexPattern = /0[xX][0-9A-Fa-f]{1,2}|[0-9A-Fa-f]{2}/g;
-  const matches = cCodeText.match(hexPattern) || [];
+  // 1. Detect width and height from #define
+  let detectedWidth = null;
+  let detectedHeight = null;
   
-  if (matches.length === 0) {
+  const widthMatch = cCodeText.match(/#define\s+\w+_width\s+(\d+)/i);
+  const heightMatch = cCodeText.match(/#define\s+\w+_height\s+(\d+)/i);
+  
+  if (widthMatch) detectedWidth = parseInt(widthMatch[1]);
+  if (heightMatch) detectedHeight = parseInt(heightMatch[1]);
+  
+  let targetSize = canvasSize;
+  if (detectedWidth && detectedHeight && detectedWidth === detectedHeight) {
+    const allowedSizes = [8, 16, 32, 64, 128, 256];
+    if (allowedSizes.includes(detectedWidth)) {
+      if (detectedWidth !== canvasSize) {
+        const confirmResize = confirm(`インポートデータのサイズは ${detectedWidth}x${detectedWidth} ピクセルです。\nキャンバスサイズを ${detectedWidth}x${detectedWidth} に変更してインポートしますか？\n（現在の描画内容は失われます）`);
+        if (!confirmResize) {
+          return;
+        }
+        targetSize = detectedWidth;
+      }
+    }
+  }
+
+  // 2. Clean comments from C code to avoid matching hex-like words in comments
+  let cleanCode = cCodeText
+    .replace(/\/\*[\s\S]*?\*\//g, '') // Remove block comments
+    .replace(/\/\/.*$/gm, '');        // Remove line comments
+    
+  // 3. Extract content inside braces { ... }
+  const braceMatch = cleanCode.match(/\{([\s\S]*?)\}/);
+  let arrayDataText = braceMatch ? braceMatch[1] : cleanCode;
+  
+  // 4. Extract hex values
+  // Prefer prefix 0x/0X first, fallback to splitting by separators if not found
+  const hexWithPrefixPattern = /0[xX][0-9A-Fa-f]{1,2}/g;
+  let matches = arrayDataText.match(hexWithPrefixPattern);
+  
+  if (!matches || matches.length === 0) {
+    const tokens = arrayDataText.split(/[\s,]+/).map(t => t.trim()).filter(t => t.length > 0);
+    matches = tokens.filter(t => /^[0-9A-Fa-f]{2}$/.test(t)).map(t => "0x" + t);
+  }
+  
+  if (!matches || matches.length === 0) {
     alert("C配列内の16進数データを検出できませんでした。フォーマットをご確認ください。");
     return;
   }
   
   // Convert matches to numbers
-  const bytes = matches.map(m => {
-    if (m.toLowerCase().startsWith('0x')) {
-      return parseInt(m, 16);
-    } else {
-      return parseInt(m, 16);
-    }
-  });
+  const bytes = matches.map(m => parseInt(m, 16));
+  
+  // Apply size change if necessary
+  if (targetSize !== canvasSize) {
+    canvasSize = targetSize;
+    selectSize.value = canvasSize;
+    
+    // Reset canvas dimensions and stacks
+    editorCanvas.width = CANVAS_DISPLAY_SIZE;
+    editorCanvas.height = CANVAS_DISPLAY_SIZE;
+    undoStack = [];
+    redoStack = [];
+    updatePreviewZoom(4);
+    applyZoom();
+  }
   
   // Determine frames from byte counts
   const tilesPerFrame = (canvasSize / 8) * (canvasSize / 8);
@@ -2627,39 +2677,37 @@ function setupZoomEvents() {
     applyZoom();
   });
   
-  // Ctrl + Mouse Wheel zoom
+  // Mouse Wheel zoom
   canvasWrapper.addEventListener('wheel', (e) => {
-    if (e.ctrlKey || e.metaKey) {
-      e.preventDefault();
-      
-      const wrapperRect = canvasWrapper.getBoundingClientRect();
-      const mouseX = e.clientX - wrapperRect.left;
-      const mouseY = e.clientY - wrapperRect.top;
-      
-      const oldScrollLeft = canvasWrapper.scrollLeft;
-      const oldScrollTop = canvasWrapper.scrollTop;
-      
-      // Calculate current display scale before zoom
-      let prevScale;
-      if (zoomMode === 'fit') {
-        const containerRect = canvasContainer.getBoundingClientRect();
-        prevScale = (containerRect.width - 16) / CANVAS_DISPLAY_SIZE;
-      } else {
-        prevScale = zoomScale;
-      }
-      
-      if (e.deltaY < 0) {
-        zoomIn();
-      } else {
-        zoomOut();
-      }
-      
-      if (zoomMode === 'fixed') {
-        const newScale = zoomScale;
-        const ratio = newScale / prevScale;
-        canvasWrapper.scrollLeft = (oldScrollLeft + mouseX) * ratio - mouseX;
-        canvasWrapper.scrollTop = (oldScrollTop + mouseY) * ratio - mouseY;
-      }
+    e.preventDefault();
+    
+    const wrapperRect = canvasWrapper.getBoundingClientRect();
+    const mouseX = e.clientX - wrapperRect.left;
+    const mouseY = e.clientY - wrapperRect.top;
+    
+    const oldScrollLeft = canvasWrapper.scrollLeft;
+    const oldScrollTop = canvasWrapper.scrollTop;
+    
+    // Calculate current display scale before zoom
+    let prevScale;
+    if (zoomMode === 'fit') {
+      const containerRect = canvasContainer.getBoundingClientRect();
+      prevScale = (containerRect.width - 16) / CANVAS_DISPLAY_SIZE;
+    } else {
+      prevScale = zoomScale;
+    }
+    
+    if (e.deltaY < 0) {
+      zoomIn();
+    } else {
+      zoomOut();
+    }
+    
+    if (zoomMode === 'fixed') {
+      const newScale = zoomScale;
+      const ratio = newScale / prevScale;
+      canvasWrapper.scrollLeft = (oldScrollLeft + mouseX) * ratio - mouseX;
+      canvasWrapper.scrollTop = (oldScrollTop + mouseY) * ratio - mouseY;
     }
   }, { passive: false });
 }
@@ -2825,6 +2873,17 @@ function setupPanning() {
       extractTileset();
       renderMetaspriteTilesetSelector();
       drawMetasprite();
+    });
+  }
+  if (chkMetaspriteGrid) {
+    chkMetaspriteGrid.addEventListener('change', () => {
+      drawMetasprite();
+    });
+  }
+  if (selMetaspriteBg && metaspriteCanvas) {
+    selMetaspriteBg.addEventListener('change', (e) => {
+      metaspriteCanvas.className = '';
+      metaspriteCanvas.classList.add(`bg-${e.target.value}`);
     });
   }
   if (metaspritePartX) {
@@ -3289,8 +3348,9 @@ function drawMetasprite() {
   const colors = isGbcMode ? gbcPalettes[currentGbcPaletteIndex] : PALETTE_THEMES[activeTheme];
   
   // Draw Crosshair Pivot
-  metaspriteCtx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
-  metaspriteCtx.lineWidth = 1;
+  const isLightBg = selMetaspriteBg && selMetaspriteBg.value === 'light';
+  metaspriteCtx.strokeStyle = isLightBg ? 'rgba(0, 0, 0, 0.35)' : 'rgba(255, 255, 255, 0.35)';
+  metaspriteCtx.lineWidth = 1.5;
   metaspriteCtx.beginPath();
   metaspriteCtx.moveTo(center, 0);
   metaspriteCtx.lineTo(center, metaspriteCanvas.height);
@@ -3299,6 +3359,29 @@ function drawMetasprite() {
   metaspriteCtx.stroke();
   
   const scale = 16; // 1 pixel = 16 screen pixels
+  
+  // Draw Grid Lines (8x8 pixels grid)
+  if (chkMetaspriteGrid && chkMetaspriteGrid.checked) {
+    metaspriteCtx.strokeStyle = isLightBg ? 'rgba(0, 0, 0, 0.08)' : 'rgba(255, 255, 255, 0.08)';
+    metaspriteCtx.lineWidth = 1;
+    metaspriteCtx.beginPath();
+    
+    const gridSize = 8 * scale; // 128 screen pixels
+    
+    // Vertical grid lines
+    for (let x = center % gridSize; x < metaspriteCanvas.width; x += gridSize) {
+      if (Math.abs(x - center) < 0.1) continue; // Skip center line as it is drawn by pivot
+      metaspriteCtx.moveTo(x, 0);
+      metaspriteCtx.lineTo(x, metaspriteCanvas.height);
+    }
+    // Horizontal grid lines
+    for (let y = center % gridSize; y < metaspriteCanvas.height; y += gridSize) {
+      if (Math.abs(y - center) < 0.1) continue; // Skip center line
+      metaspriteCtx.moveTo(0, y);
+      metaspriteCtx.lineTo(metaspriteCanvas.width, y);
+    }
+    metaspriteCtx.stroke();
+  }
   
   metaspriteParts.forEach(part => {
     const tileIdx = part.tileIndex;
@@ -3546,8 +3629,16 @@ function handleMetaspriteMouseMove(e) {
     
     const part = metaspriteParts.find(p => p.id === activeMetaspritePartId);
     if (part) {
-      part.x = partOrigX + dx;
-      part.y = partOrigY + dy;
+      let targetX = partOrigX + dx;
+      let targetY = partOrigY + dy;
+      
+      if (chkMetaspriteSnap && chkMetaspriteSnap.checked) {
+        targetX = Math.round(targetX / 8) * 8;
+        targetY = Math.round(targetY / 8) * 8;
+      }
+      
+      part.x = targetX;
+      part.y = targetY;
       
       part.x = Math.max(-128, Math.min(127, part.x));
       part.y = Math.max(-128, Math.min(127, part.y));
@@ -3573,18 +3664,19 @@ window.addEventListener('keydown', (e) => {
   let handled = false;
   let dx = 0;
   let dy = 0;
+  const step = e.shiftKey ? 8 : 1;
   
   if (e.key === 'ArrowLeft') {
-    dx = -1;
+    dx = -step;
     handled = true;
   } else if (e.key === 'ArrowRight') {
-    dx = 1;
+    dx = step;
     handled = true;
   } else if (e.key === 'ArrowUp') {
-    dy = -1;
+    dy = -step;
     handled = true;
   } else if (e.key === 'ArrowDown') {
-    dy = 1;
+    dy = step;
     handled = true;
   }
   

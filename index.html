@@ -232,10 +232,12 @@
 
       <!-- Center Panel: Editor Canvas and Timeline -->
       <section class="center-workspace">
-        <div class="canvas-wrapper" id="editor-canvas-wrapper">
-          <!-- Onion skin overlay canvas and main canvas -->
-          <div class="canvas-container" id="editor-canvas-container">
-            <canvas id="editor-canvas" width="512" height="512"></canvas>
+        <div class="canvas-viewport" style="position: relative; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+          <div class="canvas-wrapper" id="editor-canvas-wrapper">
+            <!-- Onion skin overlay canvas and main canvas -->
+            <div class="canvas-container" id="editor-canvas-container">
+              <canvas id="editor-canvas" width="512" height="512"></canvas>
+            </div>
           </div>
           <!-- Canvas Floating Zoom Controls -->
           <div class="canvas-zoom-controls">
@@ -246,6 +248,7 @@
             <button id="btn-zoom-fit" class="btn-zoom-action active" title="画面に合わせる (Alt + F)">Fit</button>
           </div>
         </div>
+
 
         <!-- Bottom Timeline Panel -->
         <div class="timeline-panel">
@@ -490,15 +493,18 @@
 
       <!-- Center Panel: Map Canvas -->
       <section class="center-workspace">
-        <div class="canvas-wrapper" id="tilemap-canvas-wrapper">
-          <div class="canvas-container" id="tilemap-canvas-container">
-            <canvas id="tilemap-canvas" width="512" height="512"></canvas>
+        <div class="canvas-viewport" style="position: relative; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+          <div class="canvas-wrapper" id="tilemap-canvas-wrapper">
+            <div class="canvas-container" id="tilemap-canvas-container">
+              <canvas id="tilemap-canvas" width="512" height="512"></canvas>
+            </div>
           </div>
           <!-- Floating info -->
           <div class="canvas-zoom-controls" style="background: rgba(15,23,42,0.85);">
             <span id="tilemap-cursor-coord" style="font-family: 'Share Tech Mono', monospace; font-size: 12px; color: #10b981;">Tile: X: 0, Y: 0</span>
           </div>
         </div>
+
       </section>
 
       <div class="resizer" id="resizer-tilemap-right"></div>
@@ -560,6 +566,28 @@
             </label>
             <span>8x16 スプライトモード</span>
           </div>
+          <div class="toggle-control" style="margin-top: 8px;">
+            <label class="switch">
+              <input type="checkbox" id="chk-metasprite-grid" checked>
+              <span class="slider"></span>
+            </label>
+            <span>グリッド線を表示</span>
+          </div>
+          <div class="toggle-control" style="margin-top: 8px;">
+            <label class="switch">
+              <input type="checkbox" id="chk-metasprite-snap" checked>
+              <span class="slider"></span>
+            </label>
+            <span>グリッドにスナップ (8px単位)</span>
+          </div>
+          <div class="toggle-control" style="margin-top: 8px; display: flex; align-items: center; justify-content: space-between;">
+            <span style="font-size: 12px;">背景表示:</span>
+            <select id="sel-metasprite-bg" style="padding: 2px 6px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 11px;">
+              <option value="checker" selected>チェッカー</option>
+              <option value="dark">ダーク</option>
+              <option value="light">ライト</option>
+            </select>
+          </div>
         </div>
 
         <div class="panel-section">
@@ -574,14 +602,17 @@
 
       <!-- Center Panel: Metasprite Canvas -->
       <section class="center-workspace">
-        <div class="canvas-wrapper" id="metasprite-canvas-wrapper">
-          <div class="canvas-container" id="metasprite-canvas-container">
-            <canvas id="metasprite-canvas" width="512" height="512"></canvas>
+        <div class="canvas-viewport" style="position: relative; flex: 1; display: flex; flex-direction: column; overflow: hidden;">
+          <div class="canvas-wrapper" id="metasprite-canvas-wrapper">
+            <div class="canvas-container" id="metasprite-canvas-container">
+              <canvas id="metasprite-canvas" class="bg-checker" width="512" height="512"></canvas>
+            </div>
           </div>
           <div class="canvas-zoom-controls" style="background: rgba(15,23,42,0.85);">
             <span id="metasprite-drag-info" style="font-size: 11px; color: #888;">ドラッグして移動。矢印キーで1px微調整。</span>
           </div>
         </div>
+
       </section>
 
       <div class="resizer" id="resizer-metasprite-right"></div>
