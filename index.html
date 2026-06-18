@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>GBDotEditor - Gameboy Dot Matrix Editor</title>
+  <!-- Google Fonts: Inter & Outfit -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;600;800&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="logo">
+        <span class="logo-icon">👾</span>
+        <h1>GBDotEditor</h1>
+        <span class="logo-sub">GBDK2020 Edition</span>
+      </div>
+      <div class="history-controls">
+        <button id="btn-undo" class="btn-icon" title="元に戻す (Ctrl+Z)" disabled>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
+        </button>
+        <button id="btn-redo" class="btn-icon" title="やり直す (Ctrl+Y)" disabled>
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 7v6h-6"/><path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Workspace -->
+    <main class="workspace">
+      <!-- Left Panel: Tools -->
+      <aside class="panel tools-panel">
+        <div class="panel-section">
+          <h3>描画ツール</h3>
+          <div class="tool-grid">
+            <button id="tool-pen" class="btn-tool active" title="ペン (P)">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+              <span>ペン</span>
+            </button>
+            <button id="tool-eraser" class="btn-tool" title="消しゴム (E)">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="m7 21-4.3-4.3c-1-1-1-2.5 0-3.4l9.6-9.6c1-1 2.5-1 3.4 0l5.6 5.6c1 1 1 2.5 0 3.4L13 21Z"/><path d="M22 21H7"/><path d="m5 11 9 9"/></svg>
+              <span>消しゴム</span>
+            </button>
+            <button id="tool-fill" class="btn-tool" title="塗りつぶし (G)">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22a7 7 0 0 0 7-7c0-2-1-3.9-3-5.5s-3.5-4-3.5-6.5C12.5 5.5 11 7 10 8.5S7 12 7 15a7 7 0 0 0 7 7Z"/></svg>
+              <span>塗りつぶし</span>
+            </button>
+            <button id="tool-picker" class="btn-tool" title="スポイト (I)">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2"><path d="m2 22 1-1h3l9-9-3-3-9 9v3Z"/><path d="M11.5 6.5 14 4a2.5 2.5 0 0 1 3.5 0l2.5 2.5a2.5 2.5 0 0 1 0 3.5l-2.5 2.5-3-3Z"/></svg>
+              <span>スポイト</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <h3>変形・操作</h3>
+          <div class="transform-grid">
+            <button id="action-flip-h" class="btn-action" title="左右反転">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M4 12H2m20 0h-2M8 12c0-4 2-6 2-6s-2 2-2 6 2 6 2 6-2-2-2-6Zm8 0c0-4-2-6-2-6s2 2 2 6-2 6-2 6 2-2 2-6Z"/></svg>
+              <span>水平反転</span>
+            </button>
+            <button id="action-flip-v" class="btn-action" title="上下反転">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12h20M12 4V2m0 20v-2M12 8c-4 0-6 2-6 2s2-2 6-2 6 2 6 2-2-2-6-2Zm0 8c-4 0-6-2-6-2s2 2 6 2 6-2 6-2-2 2-6 2Z"/></svg>
+              <span>垂直反転</span>
+            </button>
+            <button id="action-rotate-cw" class="btn-action" title="90度右回転">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 8a10 10 0 1 0-.45 6.13"/></svg>
+              <span>右90°回転</span>
+            </button>
+            <button id="action-clear" class="btn-action btn-danger" title="キャンバスをクリア">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/></svg>
+              <span>クリア</span>
+            </button>
+          </div>
+          <div class="shift-group">
+            <label>1pxシフト</label>
+            <div class="shift-pad">
+              <button id="action-shift-u" class="btn-shift" title="上へシフト">▲</button>
+              <button id="action-shift-l" class="btn-shift" title="左へシフト">◀</button>
+              <button id="action-shift-r" class="btn-shift" title="右へシフト">▶</button>
+              <button id="action-shift-d" class="btn-shift" title="下へシフト">▼</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <h3>表示設定</h3>
+          <div class="toggle-control">
+            <label class="switch">
+              <input type="checkbox" id="chk-grid-pixel" checked>
+              <span class="slider"></span>
+            </label>
+            <span>ピクセルグリッド</span>
+          </div>
+          <div class="color-picker-control">
+            <span class="control-label">グリッド色:</span>
+            <input type="color" id="picker-grid-color" value="#888888">
+          </div>
+          <div class="toggle-control">
+            <label class="switch">
+              <input type="checkbox" id="chk-grid-tile" checked>
+              <span class="slider"></span>
+            </label>
+            <span>タイルグリッド (8x8)</span>
+          </div>
+          <div class="toggle-control">
+            <label class="switch">
+              <input type="checkbox" id="chk-onion-skin">
+              <span class="slider"></span>
+            </label>
+            <span>オニオンスキン</span>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Center Panel: Editor Canvas and Timeline -->
+      <section class="center-workspace">
+        <div class="canvas-wrapper">
+          <!-- Onion skin overlay canvas and main canvas -->
+          <div class="canvas-container">
+            <canvas id="editor-canvas" width="512" height="512"></canvas>
+          </div>
+        </div>
+
+        <!-- Bottom Timeline Panel -->
+        <div class="timeline-panel">
+          <div class="timeline-header">
+            <h4>アニメーションフレーム (パラパラ漫画)</h4>
+            <div class="timeline-actions">
+              <button id="frame-add" class="btn-action" title="新規フレーム追加">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+                新規フレーム
+              </button>
+              <button id="frame-duplicate" class="btn-action" title="現在のフレームを複製">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
+                複製
+              </button>
+              <button id="frame-delete" class="btn-action btn-danger" title="現在のフレームを削除">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                削除
+              </button>
+            </div>
+          </div>
+          <div class="timeline-container">
+            <div id="timeline-frames" class="frames-list">
+              <!-- Dynamically populated frames -->
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- Right Panel: Sidebar (Preview, Palette, Export/Import, Size) -->
+      <aside class="panel sidebar-panel">
+        <!-- Canvas Size Selector -->
+        <div class="panel-section">
+          <h3>キャンバスサイズ</h3>
+          <div class="size-selector">
+            <select id="canvas-size-select">
+              <option value="8">8 x 8 (1タイル)</option>
+              <option value="16" selected>16 x 16 (2x2タイル)</option>
+              <option value="32">32 x 32 (4x4タイル)</option>
+              <option value="64">64 x 64 (8x8スプライト等)</option>
+              <option value="128">128 x 128</option>
+              <option value="256">256 x 256</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Color Palette -->
+        <div class="panel-section">
+          <h3>カラーパレット (Gameboy)</h3>
+          <div class="palette-theme-selector">
+            <button id="palette-classic" class="btn-theme active">初代緑調</button>
+            <button id="palette-pocket" class="btn-theme">ポケット</button>
+          </div>
+          <div class="palette-colors">
+            <button class="color-swatch active" data-color-idx="0" title="白/ライト (Index 0)">
+              <span class="color-preview" style="background-color: #e0f8d0;"></span>
+              <span class="color-label">Index 0</span>
+            </button>
+            <button class="color-swatch" data-color-idx="1" title="薄いグレー (Index 1)">
+              <span class="color-preview" style="background-color: #88c070;"></span>
+              <span class="color-label">Index 1</span>
+            </button>
+            <button class="color-swatch" data-color-idx="2" title="濃いグレー (Index 2)">
+              <span class="color-preview" style="background-color: #346856;"></span>
+              <span class="color-label">Index 2</span>
+            </button>
+            <button class="color-swatch" data-color-idx="3" title="黒/ダーク (Index 3)">
+              <span class="color-preview" style="background-color: #081820;"></span>
+              <span class="color-label">Index 3</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Live Preview -->
+        <div class="panel-section">
+          <h3>リアルタイムプレビュー</h3>
+          <div class="preview-container">
+            <canvas id="preview-canvas" width="128" height="128"></canvas>
+          </div>
+          <div class="preview-controls">
+            <button id="btn-play-pause" class="btn-action" title="アニメーション再生/一時停止">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" id="play-icon"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" id="pause-icon" class="hidden"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+              <span id="play-btn-text">再生</span>
+            </button>
+            <div class="fps-control">
+              <label for="fps-range">速度: <span id="fps-val">8</span> FPS</label>
+              <input type="range" id="fps-range" min="1" max="30" value="8">
+            </div>
+          </div>
+        </div>
+
+        <!-- Export / Import Control -->
+        <div class="panel-section">
+          <h3>保存・入出力</h3>
+          <div class="tabs-header">
+            <button class="tab-btn active" data-tab="tab-gbdk">GBDK2020 Cコード</button>
+            <button class="tab-btn" data-tab="tab-file">ファイル保存</button>
+          </div>
+          <div class="tab-content">
+            <!-- GBDK C Code Tab -->
+            <div id="tab-gbdk" class="tab-pane active">
+              <p class="tab-help">GBDK2020対応のC配列データ。インポート、エクスポートの両方に対応しています。</p>
+              <div class="textarea-wrapper">
+                <textarea id="c-code-io" placeholder="ここにC言語の配列コードを貼り付けてインポートするか、エクスポートされたコードをコピーします。"></textarea>
+              </div>
+              <div class="io-actions">
+                <button id="btn-import-c" class="btn-action btn-primary">貼り付けからインポート</button>
+                <button id="btn-export-c" class="btn-action">Cコード生成</button>
+              </div>
+            </div>
+
+            <!-- Project File / PNG Tab -->
+            <div id="tab-file" class="tab-pane">
+              <p class="tab-help">エディタ専用プロジェクトデータ（JSON）および画像（PNG）の入出力。</p>
+              <div class="file-io-group">
+                <h4>プロジェクト保存 (JSON)</h4>
+                <div class="io-actions">
+                  <button id="btn-export-json" class="btn-action">プロジェクト保存 (JSON)</button>
+                  <label for="input-import-json" class="btn-action btn-primary custom-file-upload">
+                    プロジェクト読込 (JSON)
+                  </label>
+                  <input type="file" id="input-import-json" accept=".json" style="display: none;">
+                </div>
+              </div>
+              <div class="file-io-group">
+                <h4>画像保存 (PNG)</h4>
+                <div class="io-actions">
+                  <button id="btn-export-png-current" class="btn-action">現フレーム保存</button>
+                  <button id="btn-export-png-sheet" class="btn-action">スプライトシート保存</button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </aside>
+    </main>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>
