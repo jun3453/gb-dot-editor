@@ -8,7 +8,8 @@ const PALETTE_THEMES = {
 };
 
 // --- Application State ---
-let canvasSize = 16; // 8, 16, 32, 64, 128, 256
+let canvasWidth = 16;
+let canvasHeight = 16;
 let frames = [];     // Array of { id: number, data: Uint8Array }
 let currentFrameIndex = 0;
 let activeTheme = 'classic';
@@ -136,7 +137,8 @@ const editorCtx = editorCanvas.getContext('2d');
 const previewCanvas = document.getElementById('preview-canvas');
 const previewCtx = previewCanvas.getContext('2d');
 
-const selectSize = document.getElementById('canvas-size-select');
+const selectWidth = document.getElementById('canvas-width-select');
+const selectHeight = document.getElementById('canvas-height-select');
 const btnUndo = document.getElementById('btn-undo');
 const btnRedo = document.getElementById('btn-redo');
 
@@ -285,6 +287,28 @@ const zoomLevelText = document.getElementById('zoom-level-text');
 
 // --- Initialization ---
 function init() {
+  // 幅・高さセレクトボックスの選択肢を動的に生成
+  if (selectWidth) {
+    selectWidth.innerHTML = '';
+    for (let w = 8; w <= 160; w += 8) {
+      const opt = document.createElement('option');
+      opt.value = w;
+      opt.textContent = `${w}px`;
+      if (w === 16) opt.selected = true;
+      selectWidth.appendChild(opt);
+    }
+  }
+  if (selectHeight) {
+    selectHeight.innerHTML = '';
+    for (let h = 8; h <= 144; h += 8) {
+      const opt = document.createElement('option');
+      opt.value = h;
+      opt.textContent = `${h}px`;
+      if (h === 16) opt.selected = true;
+      selectHeight.appendChild(opt);
+    }
+  }
+
   setupEventListeners();
   if (pickerGridColor) {
     pickerGridColor.value = gridPixelColor;
@@ -309,17 +333,25 @@ function init() {
   applyZoom();
 }
 
-// Reset everything to default with a given size
-function resetEditor(size) {
-  canvasSize = size;
+// Reset everything to default with given width and height
+function resetEditor(w, h) {
+  canvasWidth = w || 16;
+  canvasHeight = h || 16;
   frames = [
-    { id: generateId(), data: new Uint8Array(canvasSize * canvasSize) }
+    { id: generateId(), data: new Uint8Array(canvasWidth * canvasHeight) }
   ];
   currentFrameIndex = 0;
   
-  // Update canvas properties
-  editorCanvas.width = CANVAS_DISPLAY_SIZE;
-  editorCanvas.height = CANVAS_DISPLAY_SIZE;
+  // Update canvas properties with aspect ratio
+  const maxDim = Math.max(canvasWidth, canvasHeight);
+  const displayW = Math.round((canvasWidth / maxDim) * CANVAS_DISPLAY_SIZE);
+  const displayH = Math.round((canvasHeight / maxDim) * CANVAS_DISPLAY_SIZE);
+  editorCanvas.width = displayW;
+  editorCanvas.height = displayH;
+  
+  // Sync selects
+  if (selectWidth) selectWidth.value = canvasWidth;
+  if (selectHeight) selectHeight.value = canvasHeight;
   
   // Initial draw
   updateUI();
@@ -342,7 +374,8 @@ function saveHistory() {
   }));
   
   undoStack.push({
-    canvasSize: canvasSize,
+    canvasWidth: canvasWidth,
+    canvasHeight: canvasHeight,
     frames: framesCopy,
     currentFrameIndex: currentFrameIndex
   });
@@ -377,8 +410,10 @@ function redo() {
 }
 
 function restoreState(state) {
-  canvasSize = state.canvasSize;
-  selectSize.value = canvasSize;
+  canvasWidth = state.canvasWidth || state.canvasSize || 16;
+  canvasHeight = state.canvasHeight || state.canvasSize || 16;
+  if (selectWidth) selectWidth.value = canvasWidth;
+  if (selectHeight) selectHeight.value = canvasHeight;
   
   // Deep copy to current frames
   frames = state.frames.map(f => ({
@@ -387,8 +422,16 @@ function restoreState(state) {
   }));
   currentFrameIndex = state.currentFrameIndex;
   
+  // Update canvas properties with aspect ratio
+  const maxDim = Math.max(canvasWidth, canvasHeight);
+  const displayW = Math.round((canvasWidth / maxDim) * CANVAS_DISPLAY_SIZE);
+  const displayH = Math.round((canvasHeight / maxDim) * CANVAS_DISPLAY_SIZE);
+  editorCanvas.width = displayW;
+  editorCanvas.height = displayH;
+  
   updateUI();
   updateHistoryButtons();
+  applyZoom();
 }
 
 function updateHistoryButtons() {
@@ -407,9 +450,9 @@ function updateUI() {
 
 // Main Editor Canvas Drawing
 function drawMainCanvas() {
-  editorCtx.clearRect(0, 0, CANVAS_DISPLAY_SIZE, CANVAS_DISPLAY_SIZE);
+  editorCtx.clearRect(0, 0, editorCanvas.width, editorCanvas.height);
   
-  const pixelSize = CANVAS_DISPLAY_SIZE / canvasSize;
+  const pixelSize = editorCanvas.width / canvasWidth;
   const currentFrame = frames[currentFrameIndex];
   if (!currentFrame) return;
   
@@ -419,9 +462,9 @@ function drawMainCanvas() {
   if (showOnionSkin && currentFrameIndex > 0) {
     const prevFrame = frames[currentFrameIndex - 1];
     editorCtx.globalAlpha = 0.25; // Transparent overlay
-    for (let y = 0; y < canvasSize; y++) {
-      for (let x = 0; x < canvasSize; x++) {
-        const colorIdx = prevFrame.data[y * canvasSize + x];
+    for (let y = 0; y < canvasHeight; y++) {
+      for (let x = 0; x < canvasWidth; x++) {
+        const colorIdx = prevFrame.data[y * canvasWidth + x];
         if (colorIdx > 0) { // Only draw non-background onion skin for visibility
           editorCtx.fillStyle = colors[colorIdx];
           editorCtx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
@@ -432,9 +475,9 @@ function drawMainCanvas() {
   }
   
   // 2. Draw Current Frame Pixels
-  for (let y = 0; y < canvasSize; y++) {
-    for (let x = 0; x < canvasSize; x++) {
-      const colorIdx = currentFrame.data[y * canvasSize + x];
+  for (let y = 0; y < canvasHeight; y++) {
+    for (let x = 0; x < canvasWidth; x++) {
+      const colorIdx = currentFrame.data[y * canvasWidth + x];
       editorCtx.fillStyle = colors[colorIdx];
       editorCtx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
     }
@@ -448,7 +491,7 @@ function drawMainCanvas() {
       for (let x = 0; x < selection.bufferWidth; x++) {
         const canvasX = selection.floatingX + x;
         const canvasY = selection.floatingY + y;
-        if (canvasX >= 0 && canvasX < canvasSize && canvasY >= 0 && canvasY < canvasSize) {
+        if (canvasX >= 0 && canvasX < canvasWidth && canvasY >= 0 && canvasY < canvasHeight) {
           const colorIdx = selection.floatingData[y * selection.bufferWidth + x];
           editorCtx.fillStyle = colors[colorIdx];
           editorCtx.fillRect(canvasX * pixelSize, canvasY * pixelSize, pixelSize, pixelSize);
@@ -465,51 +508,60 @@ function drawMainCanvas() {
   if (showGridPixel && pixelSize > 4) {
     editorCtx.strokeStyle = gridPixelColor;
     editorCtx.beginPath();
-    for (let i = 1; i < canvasSize; i++) {
+    
+    // Vertical lines
+    for (let i = 1; i < canvasWidth; i++) {
       const pos = Math.floor(i * pixelSize) + 0.5;
-      // Vertical lines
       editorCtx.moveTo(pos, 0);
-      editorCtx.lineTo(pos, CANVAS_DISPLAY_SIZE);
-      // Horizontal lines
+      editorCtx.lineTo(pos, editorCanvas.height);
+    }
+    // Horizontal lines
+    for (let i = 1; i < canvasHeight; i++) {
+      const pos = Math.floor(i * pixelSize) + 0.5;
       editorCtx.moveTo(0, pos);
-      editorCtx.lineTo(CANVAS_DISPLAY_SIZE, pos);
+      editorCtx.lineTo(editorCanvas.width, pos);
     }
     editorCtx.stroke();
   }
   
   // Tile Grid (thick lines every 8 pixels)
-  if (showGridTile && canvasSize > 8) {
+  const maxDim = Math.max(canvasWidth, canvasHeight);
+  if (showGridTile && maxDim > 8) {
     editorCtx.strokeStyle = 'rgba(16, 185, 129, 0.5)'; // Emerald green border
     editorCtx.lineWidth = 2; // Slightly thicker
     editorCtx.beginPath();
-    for (let i = 8; i < canvasSize; i += 8) {
+    
+    // Vertical lines
+    for (let i = 8; i < canvasWidth; i += 8) {
       const pos = Math.floor(i * pixelSize);
-      // Vertical lines
       editorCtx.moveTo(pos, 0);
-      editorCtx.lineTo(pos, CANVAS_DISPLAY_SIZE);
-      // Horizontal lines
+      editorCtx.lineTo(pos, editorCanvas.height);
+    }
+    // Horizontal lines
+    for (let i = 8; i < canvasHeight; i += 8) {
+      const pos = Math.floor(i * pixelSize);
       editorCtx.moveTo(0, pos);
-      editorCtx.lineTo(CANVAS_DISPLAY_SIZE, pos);
+      editorCtx.lineTo(editorCanvas.width, pos);
     }
     editorCtx.stroke();
   }
 
   // Sprite Grid (thick lines 8x16)
-  if (showGridSprite && canvasSize > 8) {
+  if (showGridSprite && maxDim > 8) {
     editorCtx.strokeStyle = 'rgba(245, 158, 11, 0.6)'; // Gold/Orange border
     editorCtx.lineWidth = 2;
     editorCtx.beginPath();
     // Vertical lines every 8 pixels
-    for (let i = 8; i < canvasSize; i += 8) {
+    for (let i = 8; i < canvasWidth; i += 8) {
       const pos = Math.floor(i * pixelSize);
       editorCtx.moveTo(pos, 0);
-      editorCtx.lineTo(pos, CANVAS_DISPLAY_SIZE);
+      editorCtx.lineTo(pos, editorCanvas.height);
     }
     // Horizontal lines every 16 pixels
-    for (let i = 16; i < canvasSize; i += 16) {
+    for (let i = 16; i < canvasHeight; i += 16) {
       const pos = Math.floor(i * pixelSize);
       editorCtx.moveTo(0, pos);
-      editorCtx.lineTo(CANVAS_DISPLAY_SIZE, pos);
+      editorCtx.lineTo(editorCanvas.width, pos);
     }
     editorCtx.stroke();
   }
@@ -520,17 +572,18 @@ function drawMainCanvas() {
     editorCtx.strokeStyle = 'rgba(56, 189, 248, 0.85)'; // Premium Sky Blue
     editorCtx.lineWidth = 2;
     editorCtx.setLineDash([4, 4]); // Dashed line
-    const center = Math.floor((canvasSize / 2) * pixelSize);
     editorCtx.beginPath();
     if (showSymmetryH) {
       // Vertical symmetry line
-      editorCtx.moveTo(center, 0);
-      editorCtx.lineTo(center, CANVAS_DISPLAY_SIZE);
+      const centerX = Math.floor((canvasWidth / 2) * pixelSize);
+      editorCtx.moveTo(centerX, 0);
+      editorCtx.lineTo(centerX, editorCanvas.height);
     }
     if (showSymmetryV) {
       // Horizontal symmetry line
-      editorCtx.moveTo(0, center);
-      editorCtx.lineTo(CANVAS_DISPLAY_SIZE, center);
+      const centerY = Math.floor((canvasHeight / 2) * pixelSize);
+      editorCtx.moveTo(0, centerY);
+      editorCtx.lineTo(editorCanvas.width, centerY);
     }
     editorCtx.stroke();
     editorCtx.restore();
@@ -612,17 +665,17 @@ function renderTimeline() {
     
     // Mini canvas for preview
     const miniCanvas = document.createElement('canvas');
-    miniCanvas.width = canvasSize;
-    miniCanvas.height = canvasSize;
+    miniCanvas.width = canvasWidth;
+    miniCanvas.height = canvasHeight;
     miniCanvas.style.width = '72px';
     miniCanvas.style.height = '72px';
     const miniCtx = miniCanvas.getContext('2d');
     
     // Draw frame on mini canvas
     const colors = PALETTE_THEMES[activeTheme];
-    for (let y = 0; y < canvasSize; y++) {
-      for (let x = 0; x < canvasSize; x++) {
-        const colorIdx = frame.data[y * canvasSize + x];
+    for (let y = 0; y < canvasHeight; y++) {
+      for (let x = 0; x < canvasWidth; x++) {
+        const colorIdx = frame.data[y * canvasWidth + x];
         miniCtx.fillStyle = colors[colorIdx];
         miniCtx.fillRect(x, y, 1, 1);
       }
@@ -683,8 +736,8 @@ function selectFrame(index) {
 
 // --- Live Preview Animation Engine ---
 function drawPreview() {
-  const targetWidth = showPreviewTiling ? canvasSize * 3 : canvasSize;
-  const targetHeight = showPreviewTiling ? canvasSize * 3 : canvasSize;
+  const targetWidth = showPreviewTiling ? canvasWidth * 3 : canvasWidth;
+  const targetHeight = showPreviewTiling ? canvasHeight * 3 : canvasHeight;
 
   // Keep internal canvas dimensions matching target size
   if (previewCanvas.width !== targetWidth || previewCanvas.height !== targetHeight) {
@@ -706,17 +759,17 @@ function drawPreview() {
   if (!previewTempCanvas) {
     previewTempCanvas = document.createElement('canvas');
   }
-  if (previewTempCanvas.width !== canvasSize || previewTempCanvas.height !== canvasSize) {
-    previewTempCanvas.width = canvasSize;
-    previewTempCanvas.height = canvasSize;
+  if (previewTempCanvas.width !== canvasWidth || previewTempCanvas.height !== canvasHeight) {
+    previewTempCanvas.width = canvasWidth;
+    previewTempCanvas.height = canvasHeight;
   }
   const tempCtx = previewTempCanvas.getContext('2d');
   
   // Draw current target frame to temp canvas
-  tempCtx.clearRect(0, 0, canvasSize, canvasSize);
-  for (let y = 0; y < canvasSize; y++) {
-    for (let x = 0; x < canvasSize; x++) {
-      const colorIdx = frame.data[y * canvasSize + x];
+  tempCtx.clearRect(0, 0, canvasWidth, canvasHeight);
+  for (let y = 0; y < canvasHeight; y++) {
+    for (let x = 0; x < canvasWidth; x++) {
+      const colorIdx = frame.data[y * canvasWidth + x];
       tempCtx.fillStyle = colors[colorIdx];
       tempCtx.fillRect(x, y, 1, 1);
     }
@@ -726,7 +779,7 @@ function drawPreview() {
   const drawTiled = () => {
     for (let ty = 0; ty < 3; ty++) {
       for (let tx = 0; tx < 3; tx++) {
-        previewCtx.drawImage(previewTempCanvas, tx * canvasSize, ty * canvasSize);
+        previewCtx.drawImage(previewTempCanvas, tx * canvasWidth, ty * canvasHeight);
       }
     }
   };
@@ -914,37 +967,37 @@ function drawPixelWithSymmetry(x, y, colorVal) {
   if (!currentFrame) return;
   
   if (showSeamless) {
-    x = (x % canvasSize + canvasSize) % canvasSize;
-    y = (y % canvasSize + canvasSize) % canvasSize;
+    x = (x % canvasWidth + canvasWidth) % canvasWidth;
+    y = (y % canvasHeight + canvasHeight) % canvasHeight;
   }
   
   // 元のピクセル
-  if (x >= 0 && x < canvasSize && y >= 0 && y < canvasSize) {
-    currentFrame.data[y * canvasSize + x] = colorVal;
+  if (x >= 0 && x < canvasWidth && y >= 0 && y < canvasHeight) {
+    currentFrame.data[y * canvasWidth + x] = colorVal;
   }
   
   // 左右対称
   if (showSymmetryH) {
-    const symX = canvasSize - 1 - x;
-    if (symX >= 0 && symX < canvasSize && y >= 0 && y < canvasSize) {
-      currentFrame.data[y * canvasSize + symX] = colorVal;
+    const symX = canvasWidth - 1 - x;
+    if (symX >= 0 && symX < canvasWidth && y >= 0 && y < canvasHeight) {
+      currentFrame.data[y * canvasWidth + symX] = colorVal;
     }
   }
   
   // 上下対称
   if (showSymmetryV) {
-    const symY = canvasSize - 1 - y;
-    if (x >= 0 && x < canvasSize && symY >= 0 && symY < canvasSize) {
-      currentFrame.data[symY * canvasSize + x] = colorVal;
+    const symY = canvasHeight - 1 - y;
+    if (x >= 0 && x < canvasWidth && symY >= 0 && symY < canvasHeight) {
+      currentFrame.data[symY * canvasWidth + x] = colorVal;
     }
   }
   
   // 4方向対称 (左右かつ上下)
   if (showSymmetryH && showSymmetryV) {
-    const symX = canvasSize - 1 - x;
-    const symY = canvasSize - 1 - y;
-    if (symX >= 0 && symX < canvasSize && symY >= 0 && symY < canvasSize) {
-      currentFrame.data[symY * canvasSize + symX] = colorVal;
+    const symX = canvasWidth - 1 - x;
+    const symY = canvasHeight - 1 - y;
+    if (symX >= 0 && symX < canvasWidth && symY >= 0 && symY < canvasHeight) {
+      currentFrame.data[symY * canvasWidth + symX] = colorVal;
     }
   }
 }
@@ -1001,30 +1054,30 @@ function applyPathToData() {
           const py = pt.y + dy;
           
           // Original pixel
-          if (px >= 0 && px < canvasSize && py >= 0 && py < canvasSize) {
-            targetPixels.add(py * canvasSize + px);
+          if (px >= 0 && px < canvasWidth && py >= 0 && py < canvasHeight) {
+            targetPixels.add(py * canvasWidth + px);
           }
           
           // Horizontal Symmetry
           if (showSymmetryH) {
-            const symX = canvasSize - 1 - px;
-            if (symX >= 0 && symX < canvasSize && py >= 0 && py < canvasSize) {
-              targetPixels.add(py * canvasSize + symX);
+            const symX = canvasWidth - 1 - px;
+            if (symX >= 0 && symX < canvasWidth && py >= 0 && py < canvasHeight) {
+              targetPixels.add(py * canvasWidth + symX);
             }
           }
           // Vertical Symmetry
           if (showSymmetryV) {
-            const symY = canvasSize - 1 - py;
-            if (px >= 0 && px < canvasSize && symY >= 0 && symY < canvasSize) {
-              targetPixels.add(symY * canvasSize + px);
+            const symY = canvasHeight - 1 - py;
+            if (px >= 0 && px < canvasWidth && symY >= 0 && symY < canvasHeight) {
+              targetPixels.add(symY * canvasWidth + px);
             }
           }
           // 4-way Symmetry
           if (showSymmetryH && showSymmetryV) {
-            const symX = canvasSize - 1 - px;
-            const symY = canvasSize - 1 - py;
-            if (symX >= 0 && symX < canvasSize && symY >= 0 && symY < canvasSize) {
-              targetPixels.add(symY * canvasSize + symX);
+            const symX = canvasWidth - 1 - px;
+            const symY = canvasHeight - 1 - py;
+            if (symX >= 0 && symX < canvasWidth && symY >= 0 && symY < canvasHeight) {
+              targetPixels.add(symY * canvasWidth + symX);
             }
           }
         }
@@ -1098,7 +1151,7 @@ function handleDrawEvent(e) {
   const scaleX = editorCanvas.width / rect.width;
   const scaleY = editorCanvas.height / rect.height;
   
-  const pixelSize = CANVAS_DISPLAY_SIZE / canvasSize;
+  const pixelSize = editorCanvas.width / canvasWidth;
   
   const mouseX = (e.clientX - rect.left) * scaleX;
   const mouseY = (e.clientY - rect.top) * scaleY;
@@ -1106,7 +1159,7 @@ function handleDrawEvent(e) {
   const x = Math.floor(mouseX / pixelSize);
   const y = Math.floor(mouseY / pixelSize);
   
-  if (x >= 0 && x < canvasSize && y >= 0 && y < canvasSize) {
+  if (x >= 0 && x < canvasWidth && y >= 0 && y < canvasHeight) {
     executeToolAction(x, y, drawingButton);
   }
 }
@@ -1115,7 +1168,7 @@ function executeToolAction(x, y, button) {
   const currentFrame = frames[currentFrameIndex];
   if (!currentFrame) return;
   
-  const targetIndex = y * canvasSize + x;
+  const targetIndex = y * canvasWidth + x;
   const colorIndex = (button === 2) ? secondaryColorIndex : primaryColorIndex;
   
   if (activeTool === 'pen') {
@@ -1156,16 +1209,16 @@ function floodFill(startX, startY, targetColor, replacementColor) {
   
   while (queue.length > 0) {
     const [cx, cy] = queue.shift();
-    const idx = cy * canvasSize + cx;
+    const idx = cy * canvasWidth + cx;
     
     if (currentFrame.data[idx] === targetColor) {
       currentFrame.data[idx] = replacementColor;
       
       // Check neighbors
       if (cx > 0) queue.push([cx - 1, cy]);
-      if (cx < canvasSize - 1) queue.push([cx + 1, cy]);
+      if (cx < canvasWidth - 1) queue.push([cx + 1, cy]);
       if (cy > 0) queue.push([cx, cy - 1]);
-      if (cy < canvasSize - 1) queue.push([cx, cy + 1]);
+      if (cy < canvasHeight - 1) queue.push([cx, cy + 1]);
     }
   }
 }
@@ -1191,7 +1244,7 @@ function moveFrame(fromIdx, toIdx) {
 function addFrame() {
   const newFrame = {
     id: generateId(),
-    data: new Uint8Array(canvasSize * canvasSize)
+    data: new Uint8Array(canvasWidth * canvasHeight)
   };
   frames.splice(currentFrameIndex + 1, 0, newFrame);
   currentFrameIndex++;
@@ -1246,10 +1299,10 @@ function flipHorizontal() {
   const currentFrame = frames[currentFrameIndex];
   if (!currentFrame) return;
   
-  const newData = new Uint8Array(canvasSize * canvasSize);
-  for (let y = 0; y < canvasSize; y++) {
-    for (let x = 0; x < canvasSize; x++) {
-      newData[y * canvasSize + x] = currentFrame.data[y * canvasSize + (canvasSize - 1 - x)];
+  const newData = new Uint8Array(canvasWidth * canvasHeight);
+  for (let y = 0; y < canvasHeight; y++) {
+    for (let x = 0; x < canvasWidth; x++) {
+      newData[y * canvasWidth + x] = currentFrame.data[y * canvasWidth + (canvasWidth - 1 - x)];
     }
   }
   currentFrame.data = newData;
@@ -1261,10 +1314,10 @@ function flipVertical() {
   const currentFrame = frames[currentFrameIndex];
   if (!currentFrame) return;
   
-  const newData = new Uint8Array(canvasSize * canvasSize);
-  for (let y = 0; y < canvasSize; y++) {
-    for (let x = 0; x < canvasSize; x++) {
-      newData[y * canvasSize + x] = currentFrame.data[(canvasSize - 1 - y) * canvasSize + x];
+  const newData = new Uint8Array(canvasWidth * canvasHeight);
+  for (let y = 0; y < canvasHeight; y++) {
+    for (let x = 0; x < canvasWidth; x++) {
+      newData[y * canvasWidth + x] = currentFrame.data[(canvasHeight - 1 - y) * canvasWidth + x];
     }
   }
   currentFrame.data = newData;
@@ -1273,14 +1326,18 @@ function flipVertical() {
 }
 
 function rotateClockwise() {
+  if (canvasWidth !== canvasHeight) {
+    alert("非正方形のキャンバスは回転できません。");
+    return;
+  }
   const currentFrame = frames[currentFrameIndex];
   if (!currentFrame) return;
   
-  const newData = new Uint8Array(canvasSize * canvasSize);
-  for (let y = 0; y < canvasSize; y++) {
-    for (let x = 0; x < canvasSize; x++) {
-      // (x, y) becomes (size - 1 - y, x)
-      newData[x * canvasSize + (canvasSize - 1 - y)] = currentFrame.data[y * canvasSize + x];
+  const newData = new Uint8Array(canvasWidth * canvasHeight);
+  for (let y = 0; y < canvasHeight; y++) {
+    for (let x = 0; x < canvasWidth; x++) {
+      // (x, y) becomes (width - 1 - y, x)
+      newData[x * canvasWidth + (canvasWidth - 1 - y)] = currentFrame.data[y * canvasWidth + x];
     }
   }
   currentFrame.data = newData;
@@ -1292,13 +1349,13 @@ function shiftCanvas(dx, dy) {
   const currentFrame = frames[currentFrameIndex];
   if (!currentFrame) return;
   
-  const newData = new Uint8Array(canvasSize * canvasSize);
-  for (let y = 0; y < canvasSize; y++) {
-    for (let x = 0; x < canvasSize; x++) {
+  const newData = new Uint8Array(canvasWidth * canvasHeight);
+  for (let y = 0; y < canvasHeight; y++) {
+    for (let x = 0; x < canvasWidth; x++) {
       const tx = x + dx;
       const ty = y + dy;
-      if (tx >= 0 && tx < canvasSize && ty >= 0 && ty < canvasSize) {
-        newData[ty * canvasSize + tx] = currentFrame.data[y * canvasSize + x];
+      if (tx >= 0 && tx < canvasWidth && ty >= 0 && ty < canvasHeight) {
+        newData[ty * canvasWidth + tx] = currentFrame.data[y * canvasWidth + x];
       }
     }
   }
@@ -1311,13 +1368,13 @@ function shiftCanvas(dx, dy) {
 
 // Convert current frame & size setup to GBDK2020 format
 function generateGBDK2020Code() {
-  const totalTilesX = canvasSize / 8;
-  const totalTilesY = canvasSize / 8;
+  const totalTilesX = canvasWidth / 8;
+  const totalTilesY = canvasHeight / 8;
   const tilesPerFrame = totalTilesX * totalTilesY;
   
-  let code = `/*\n  GBDK 2020 Tile Data\n  Generated by GBDotEditor\n  Size: ${canvasSize}x${canvasSize} pixels (${tilesPerFrame} tiles/frame)\n  Frames: ${frames.length} (Total ${tilesPerFrame * frames.length} tiles)\n*/\n\n`;
-  code += `#define my_tile_width ${canvasSize}\n`;
-  code += `#define my_tile_height ${canvasSize}\n`;
+  let code = `/*\n  GBDK 2020 Tile Data\n  Generated by GBDotEditor\n  Size: ${canvasWidth}x${canvasHeight} pixels (${tilesPerFrame} tiles/frame)\n  Frames: ${frames.length} (Total ${tilesPerFrame * frames.length} tiles)\n*/\n\n`;
+  code += `#define my_tile_width ${canvasWidth}\n`;
+  code += `#define my_tile_height ${canvasHeight}\n`;
   code += `#define my_tile_num_tiles ${tilesPerFrame}\n`;
   code += `#define my_tile_num_frames ${frames.length}\n\n`;
   code += `const unsigned char my_tile_data[] = {\n`;
@@ -1338,7 +1395,7 @@ function generateGBDK2020Code() {
           for (let px = 0; px < 8; px++) {
             const canvasX = tx * 8 + px;
             const canvasY = ty * 8 + py;
-            const colorIdx = frame.data[canvasY * canvasSize + canvasX];
+            const colorIdx = frame.data[canvasY * canvasWidth + canvasX];
             
             const lowBit = colorIdx & 1;
             const highBit = (colorIdx >> 1) & 1;
@@ -1397,16 +1454,19 @@ function importGBDK2020Code(cCodeText) {
   if (widthMatch) detectedWidth = parseInt(widthMatch[1]);
   if (heightMatch) detectedHeight = parseInt(heightMatch[1]);
   
-  let targetSize = canvasSize;
-  if (detectedWidth && detectedHeight && detectedWidth === detectedHeight) {
-    const allowedSizes = [8, 16, 32, 64, 128, 256];
-    if (allowedSizes.includes(detectedWidth)) {
-      if (detectedWidth !== canvasSize) {
-        const confirmResize = confirm(`インポートデータのサイズは ${detectedWidth}x${detectedWidth} ピクセルです。\nキャンバスサイズを ${detectedWidth}x${detectedWidth} に変更してインポートしますか？\n（現在の描画内容は失われます）`);
+  let targetW = canvasWidth;
+  let targetH = canvasHeight;
+  if (detectedWidth && detectedHeight) {
+    if (detectedWidth % 8 === 0 && detectedHeight % 8 === 0 &&
+        detectedWidth >= 8 && detectedWidth <= 160 &&
+        detectedHeight >= 8 && detectedHeight <= 144) {
+      if (detectedWidth !== canvasWidth || detectedHeight !== canvasHeight) {
+        const confirmResize = confirm(`インポートデータのサイズは ${detectedWidth}x${detectedHeight} ピクセルです。\nキャンバスサイズを変更してインポートしますか？\n（現在の描画内容は失われます）`);
         if (!confirmResize) {
           return;
         }
-        targetSize = detectedWidth;
+        targetW = detectedWidth;
+        targetH = detectedHeight;
       }
     }
   }
@@ -1439,13 +1499,19 @@ function importGBDK2020Code(cCodeText) {
   const bytes = matches.map(m => parseInt(m, 16));
   
   // Apply size change if necessary
-  if (targetSize !== canvasSize) {
-    canvasSize = targetSize;
-    selectSize.value = canvasSize;
+  if (targetW !== canvasWidth || targetH !== canvasHeight) {
+    canvasWidth = targetW;
+    canvasHeight = targetH;
+    if (selectWidth) selectWidth.value = canvasWidth;
+    if (selectHeight) selectHeight.value = canvasHeight;
     
     // Reset canvas dimensions and stacks
-    editorCanvas.width = CANVAS_DISPLAY_SIZE;
-    editorCanvas.height = CANVAS_DISPLAY_SIZE;
+    const maxDim = Math.max(canvasWidth, canvasHeight);
+    const displayW = Math.round((canvasWidth / maxDim) * CANVAS_DISPLAY_SIZE);
+    const displayH = Math.round((canvasHeight / maxDim) * CANVAS_DISPLAY_SIZE);
+    editorCanvas.width = displayW;
+    editorCanvas.height = displayH;
+    
     undoStack = [];
     redoStack = [];
     updatePreviewZoom(4);
@@ -1453,7 +1519,7 @@ function importGBDK2020Code(cCodeText) {
   }
   
   // Determine frames from byte counts
-  const tilesPerFrame = (canvasSize / 8) * (canvasSize / 8);
+  const tilesPerFrame = (canvasWidth / 8) * (canvasHeight / 8);
   const bytesPerFrame = tilesPerFrame * 16;
   
   const numFramesCalculated = Math.max(1, Math.ceil(bytes.length / bytesPerFrame));
@@ -1462,11 +1528,11 @@ function importGBDK2020Code(cCodeText) {
   const importedFrames = [];
   
   for (let f = 0; f < numFramesCalculated; f++) {
-    const frameData = new Uint8Array(canvasSize * canvasSize);
+    const frameData = new Uint8Array(canvasWidth * canvasHeight);
     const frameByteStart = f * bytesPerFrame;
     
-    const totalTilesX = canvasSize / 8;
-    const totalTilesY = canvasSize / 8;
+    const totalTilesX = canvasWidth / 8;
+    const totalTilesY = canvasHeight / 8;
     
     for (let ty = 0; ty < totalTilesY; ty++) {
       for (let tx = 0; tx < totalTilesX; tx++) {
@@ -1487,7 +1553,7 @@ function importGBDK2020Code(cCodeText) {
             
             const canvasX = tx * 8 + px;
             const canvasY = ty * 8 + py;
-            frameData[canvasY * canvasSize + canvasX] = colorIdx;
+            frameData[canvasY * canvasWidth + canvasX] = colorIdx;
           }
         }
       }
@@ -1526,7 +1592,8 @@ function exportProjectJson() {
   const project = {
     appName: "GBDotEditor",
     version: "1.0",
-    canvasSize: canvasSize,
+    canvasWidth: canvasWidth,
+    canvasHeight: canvasHeight,
     activeTheme: activeTheme,
     frames: serializedFrames
   };
@@ -1536,7 +1603,7 @@ function exportProjectJson() {
   
   const a = document.createElement('a');
   a.href = url;
-  a.download = `gb_project_${canvasSize}x${canvasSize}_${Date.now()}.json`;
+  a.download = `gb_project_${canvasWidth}x${canvasHeight}_${Date.now()}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -1552,9 +1619,19 @@ function importProjectJson(file) {
         throw new Error("Invalid project file.");
       }
       
-      canvasSize = parseInt(project.canvasSize);
-      selectSize.value = canvasSize;
+      canvasWidth = parseInt(project.canvasWidth || project.canvasSize || 16);
+      canvasHeight = parseInt(project.canvasHeight || project.canvasSize || 16);
+      if (selectWidth) selectWidth.value = canvasWidth;
+      if (selectHeight) selectHeight.value = canvasHeight;
       activeTheme = project.activeTheme || 'classic';
+      
+      // Update canvas properties with aspect ratio
+      const maxDim = Math.max(canvasWidth, canvasHeight);
+      const displayW = Math.round((canvasWidth / maxDim) * CANVAS_DISPLAY_SIZE);
+      const displayH = Math.round((canvasHeight / maxDim) * CANVAS_DISPLAY_SIZE);
+      editorCanvas.width = displayW;
+      editorCanvas.height = displayH;
+      applyZoom();
       
       if (activeTheme === 'classic') {
         paletteClassic.classList.add('active');
@@ -1589,14 +1666,14 @@ function exportPngCurrent() {
   if (!currentFrame) return;
   
   const exportCanvas = document.createElement('canvas');
-  exportCanvas.width = canvasSize;
-  exportCanvas.height = canvasSize;
+  exportCanvas.width = canvasWidth;
+  exportCanvas.height = canvasHeight;
   const ctx = exportCanvas.getContext('2d');
   
   const colors = PALETTE_THEMES[activeTheme];
-  for (let y = 0; y < canvasSize; y++) {
-    for (let x = 0; x < canvasSize; x++) {
-      const colorIdx = currentFrame.data[y * canvasSize + x];
+  for (let y = 0; y < canvasHeight; y++) {
+    for (let x = 0; x < canvasWidth; x++) {
+      const colorIdx = currentFrame.data[y * canvasWidth + x];
       ctx.fillStyle = colors[colorIdx];
       ctx.fillRect(x, y, 1, 1);
     }
@@ -1607,17 +1684,17 @@ function exportPngCurrent() {
 
 function exportPngSheet() {
   const exportCanvas = document.createElement('canvas');
-  exportCanvas.width = canvasSize * frames.length;
-  exportCanvas.height = canvasSize;
+  exportCanvas.width = canvasWidth * frames.length;
+  exportCanvas.height = canvasHeight;
   const ctx = exportCanvas.getContext('2d');
   
   const colors = PALETTE_THEMES[activeTheme];
   
   frames.forEach((frame, idx) => {
-    const startX = idx * canvasSize;
-    for (let y = 0; y < canvasSize; y++) {
-      for (let x = 0; x < canvasSize; x++) {
-        const colorIdx = frame.data[y * canvasSize + x];
+    const startX = idx * canvasWidth;
+    for (let y = 0; y < canvasHeight; y++) {
+      for (let x = 0; x < canvasWidth; x++) {
+        const colorIdx = frame.data[y * canvasWidth + x];
         ctx.fillStyle = colors[colorIdx];
         ctx.fillRect(startX + x, y, 1, 1);
       }
@@ -1639,17 +1716,21 @@ function triggerDownload(dataUrl, filename) {
 // --- Event Listeners and Setup ---
 function setupEventListeners() {
   // Size select
-  selectSize.addEventListener('change', (e) => {
-    const newSize = parseInt(e.target.value);
+  const onSizeChange = () => {
+    const newW = parseInt(selectWidth.value);
+    const newH = parseInt(selectHeight.value);
     if (confirm("キャンバスサイズを変更すると現在の描画内容がクリアされます。よろしいですか？")) {
-      resetEditor(newSize);
+      resetEditor(newW, newH);
       undoStack = [];
       redoStack = [];
       saveHistory();
     } else {
-      selectSize.value = canvasSize;
+      if (selectWidth) selectWidth.value = canvasWidth;
+      if (selectHeight) selectHeight.value = canvasHeight;
     }
-  });
+  };
+  if (selectWidth) selectWidth.addEventListener('change', onSizeChange);
+  if (selectHeight) selectHeight.addEventListener('change', onSizeChange);
   
   // Disable default context menu on canvas
   editorCanvas.addEventListener('contextmenu', (e) => {
@@ -1661,14 +1742,14 @@ function setupEventListeners() {
     const rect = editorCanvas.getBoundingClientRect();
     const scaleX = editorCanvas.width / rect.width;
     const scaleY = editorCanvas.height / rect.height;
-    const pixelSize = CANVAS_DISPLAY_SIZE / canvasSize;
+    const pixelSize = editorCanvas.width / canvasWidth;
     
     const mouseX = (e.clientX - rect.left) * scaleX;
     const mouseY = (e.clientY - rect.top) * scaleY;
     const x = Math.floor(mouseX / pixelSize);
     const y = Math.floor(mouseY / pixelSize);
     
-    if (x < 0 || x >= canvasSize || y < 0 || y >= canvasSize) return;
+    if (x < 0 || x >= canvasWidth || y < 0 || y >= canvasHeight) return;
     
     if (activeTool === 'select') {
       if (e.button !== 0 && e.button !== 2) return; // Left/Right click only
@@ -1697,7 +1778,7 @@ function setupEventListeners() {
         if (currentFrame) {
           for (let sy = y1; sy <= y2; sy++) {
             for (let sx = x1; sx <= x2; sx++) {
-              currentFrame.data[sy * canvasSize + sx] = 0; // Clear original pixels
+              currentFrame.data[sy * canvasWidth + sx] = 0; // Clear original pixels
             }
           }
         }
@@ -1770,7 +1851,7 @@ function setupEventListeners() {
     const rect = editorCanvas.getBoundingClientRect();
     const scaleX = editorCanvas.width / rect.width;
     const scaleY = editorCanvas.height / rect.height;
-    const pixelSize = CANVAS_DISPLAY_SIZE / canvasSize;
+    const pixelSize = editorCanvas.width / canvasWidth;
     
     const mouseX = (e.clientX - rect.left) * scaleX;
     const mouseY = (e.clientY - rect.top) * scaleY;
@@ -1784,7 +1865,7 @@ function setupEventListeners() {
         selection.floatingX = originalFloatingX + dx;
         selection.floatingY = originalFloatingY + dy;
         drawMainCanvas();
-      } else if (isSelecting && (x >= 0 && x < canvasSize && y >= 0 && y < canvasSize)) {
+      } else if (isSelecting && (x >= 0 && x < canvasWidth && y >= 0 && y < canvasHeight)) {
         selection.endX = x;
         selection.endY = y;
         drawMainCanvas();
@@ -1792,7 +1873,7 @@ function setupEventListeners() {
       return;
     }
     
-    if (isDrawing && x >= 0 && x < canvasSize && y >= 0 && y < canvasSize) {
+    if (isDrawing && x >= 0 && x < canvasWidth && y >= 0 && y < canvasHeight) {
       if (activeTool === 'pen' || activeTool === 'eraser' || activeTool === 'dither' || activeTool === 'shade') {
         const linePixels = getLinePixels(lastMouseX, lastMouseY, x, y);
         for (let i = 1; i < linePixels.length; i++) {
@@ -2282,7 +2363,7 @@ function copySelection() {
   
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
-      selection.buffer[y * w + x] = currentFrame.data[(y1 + y) * canvasSize + (x1 + x)];
+      selection.buffer[y * w + x] = currentFrame.data[(y1 + y) * canvasWidth + (x1 + x)];
     }
   }
 }
@@ -2301,7 +2382,7 @@ function cutSelection() {
   
   for (let y = y1; y <= y2; y++) {
     for (let x = x1; x <= x2; x++) {
-      currentFrame.data[y * canvasSize + x] = 0; // Clear to background (white)
+      currentFrame.data[y * canvasWidth + x] = 0; // Clear to background (white)
     }
   }
   
@@ -2321,8 +2402,8 @@ function pasteSelection() {
   
   selection.active = false;
   selection.isFloating = true;
-  selection.floatingX = Math.floor((canvasSize - selection.bufferWidth) / 2);
-  selection.floatingY = Math.floor((canvasSize - selection.bufferHeight) / 2);
+  selection.floatingX = Math.floor((canvasWidth - selection.bufferWidth) / 2);
+  selection.floatingY = Math.floor((canvasHeight - selection.bufferHeight) / 2);
   selection.floatingData = new Uint8Array(selection.buffer);
   
   startAntsAnimation();
@@ -2339,8 +2420,8 @@ function confirmSelection() {
     for (let x = 0; x < selection.bufferWidth; x++) {
       const canvasX = selection.floatingX + x;
       const canvasY = selection.floatingY + y;
-      if (canvasX >= 0 && canvasX < canvasSize && canvasY >= 0 && canvasY < canvasSize) {
-        currentFrame.data[canvasY * canvasSize + canvasX] = selection.floatingData[y * selection.bufferWidth + x];
+      if (canvasX >= 0 && canvasX < canvasWidth && canvasY >= 0 && canvasY < canvasHeight) {
+        currentFrame.data[canvasY * canvasWidth + canvasX] = selection.floatingData[y * selection.bufferWidth + x];
       }
     }
   }
@@ -2381,8 +2462,8 @@ function updatePreviewZoom(zoom) {
     previewContainer.style.setProperty('--preview-zoom', `${zoom}px`);
   }
   
-  const width = canvasSize * zoom;
-  const height = canvasSize * zoom;
+  const width = (showPreviewTiling ? canvasWidth * 3 : canvasWidth) * zoom;
+  const height = (showPreviewTiling ? canvasHeight * 3 : canvasHeight) * zoom;
   previewCanvas.style.width = `${width}px`;
   previewCanvas.style.height = `${height}px`;
 }
@@ -2404,24 +2485,26 @@ function exportGif() {
   btnExportGif.disabled = true;
   
   const colors = PALETTE_THEMES[activeTheme];
-  const imageSize = Math.max(128, canvasSize * 8); // Upscale for clean output
+  const imageW = Math.max(128, canvasWidth * 8);
+  const imageH = Math.max(128, canvasHeight * 8);
   
   const exportCanvas = document.createElement('canvas');
-  exportCanvas.width = imageSize;
-  exportCanvas.height = imageSize;
+  exportCanvas.width = imageW;
+  exportCanvas.height = imageH;
   const ctx = exportCanvas.getContext('2d');
   ctx.imageRendering = 'pixelated';
   
-  const pixelSize = imageSize / canvasSize;
+  const psX = imageW / canvasWidth;
+  const psY = imageH / canvasHeight;
   const frameImages = [];
   
   frames.forEach((frame) => {
-    ctx.clearRect(0, 0, imageSize, imageSize);
-    for (let y = 0; y < canvasSize; y++) {
-      for (let x = 0; x < canvasSize; x++) {
-        const colorIdx = frame.data[y * canvasSize + x];
+    ctx.clearRect(0, 0, imageW, imageH);
+    for (let y = 0; y < canvasHeight; y++) {
+      for (let x = 0; x < canvasWidth; x++) {
+        const colorIdx = frame.data[y * canvasWidth + x];
         ctx.fillStyle = colors[colorIdx];
-        ctx.fillRect(x * pixelSize, y * pixelSize, pixelSize, pixelSize);
+        ctx.fillRect(x * psX, y * psY, psX, psY);
       }
     }
     frameImages.push(exportCanvas.toDataURL());
@@ -2429,8 +2512,8 @@ function exportGif() {
   
   gifshot.createGIF({
     images: frameImages,
-    gifWidth: imageSize,
-    gifHeight: imageSize,
+    gifWidth: imageW,
+    gifHeight: imageH,
     interval: 1 / fps,
     numFrames: frames.length,
     sampleInterval: 10
@@ -2439,7 +2522,7 @@ function exportGif() {
     btnExportGif.disabled = false;
     
     if (!obj.error) {
-      triggerDownload(obj.image, `gb_animation_${canvasSize}x${canvasSize}_${Date.now()}.gif`);
+      triggerDownload(obj.image, `gb_animation_${canvasWidth}x${canvasHeight}_${Date.now()}.gif`);
     } else {
       alert("GIFアニメーションの生成に失敗しました: " + obj.error);
     }
@@ -2484,6 +2567,10 @@ function updatePaletteColors() {
 // --- Layout & Zoom Management Functions ---
 
 function applyZoom() {
+  const maxDim = Math.max(canvasWidth, canvasHeight);
+  const baseW = (canvasWidth / maxDim) * CANVAS_DISPLAY_SIZE;
+  const baseH = (canvasHeight / maxDim) * CANVAS_DISPLAY_SIZE;
+
   if (zoomMode === 'fit') {
     canvasWrapper.classList.add('fit-mode');
     canvasContainer.style.removeProperty('--canvas-display-width');
@@ -2494,7 +2581,7 @@ function applyZoom() {
       const containerRect = canvasContainer.getBoundingClientRect();
       if (!containerRect || containerRect.width === 0) return;
       const fitWidth = containerRect.width - 16; 
-      const fitScale = fitWidth / CANVAS_DISPLAY_SIZE;
+      const fitScale = fitWidth / baseW;
       zoomLevelText.innerText = `Fit (${Math.round(fitScale * 100)}%)`;
     }, 50);
     
@@ -2502,9 +2589,10 @@ function applyZoom() {
     btnZoom100.classList.remove('active');
   } else {
     canvasWrapper.classList.remove('fit-mode');
-    const displaySize = CANVAS_DISPLAY_SIZE * zoomScale;
-    canvasContainer.style.setProperty('--canvas-display-width', `${displaySize}px`);
-    canvasContainer.style.setProperty('--canvas-display-height', `${displaySize}px`);
+    const displayW = baseW * zoomScale;
+    const displayH = baseH * zoomScale;
+    canvasContainer.style.setProperty('--canvas-display-width', `${displayW}px`);
+    canvasContainer.style.setProperty('--canvas-display-height', `${displayH}px`);
     
     zoomLevelText.innerText = `${Math.round(zoomScale * 100)}%`;
     
@@ -2982,8 +3070,8 @@ function extractTileset() {
   tileSet = [];
   
   frames.forEach(frame => {
-    const tilesAcross = canvasSize / 8;
-    const tilesDown = canvasSize / 8;
+    const tilesAcross = canvasWidth / 8;
+    const tilesDown = canvasHeight / 8;
     
     for (let ty = 0; ty < tilesDown; ty++) {
       for (let tx = 0; tx < tilesAcross; tx++) {
@@ -2993,7 +3081,7 @@ function extractTileset() {
           for (let px = 0; px < 8; px++) {
             const frameX = tx * 8 + px;
             const frameY = ty * 8 + py;
-            block[py * 8 + px] = frame.data[frameY * canvasSize + frameX];
+            block[py * 8 + px] = frame.data[frameY * canvasWidth + frameX];
           }
         }
         
