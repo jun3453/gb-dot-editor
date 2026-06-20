@@ -15,7 +15,9 @@ let currentFrameIndex = 0;
 let activeTheme = 'classic';
 let primaryColorIndex = 3;   // Left click color (default Black/Dark)
 let secondaryColorIndex = 0; // Right click color (default White/Light)
-let activeTool = 'pen';      // 'pen', 'eraser', 'fill', 'picker'
+let activeTool = 'pen';      // 'pen', 'eraser', 'fill', 'picker', 'text'
+let hoverX = -1;
+let hoverY = -1;
 let isDrawing = false;
 let drawingButton = null;    // Tracks drawing mouse button (0: left, 2: right)
 let showGridPixel = true;
@@ -210,6 +212,16 @@ const toolRect = document.getElementById('tool-rect');
 const toolEllipse = document.getElementById('tool-ellipse');
 const toolDither = document.getElementById('tool-dither');
 const toolShade = document.getElementById('tool-shade');
+const toolText = document.getElementById('tool-text');
+
+const textSettingsContainer = document.getElementById('text-settings-container');
+const textInput = document.getElementById('text-input');
+const textFontSelect = document.getElementById('text-font-select');
+const textSizeInput = document.getElementById('text-size-input');
+const textBold = document.getElementById('text-bold');
+const textItalic = document.getElementById('text-italic');
+const textThreshold = document.getElementById('text-threshold');
+const textThresholdVal = document.getElementById('text-threshold-val');
 
 const actionFlipH = document.getElementById('action-flip-h');
 const actionFlipV = document.getElementById('action-flip-v');
@@ -619,6 +631,51 @@ function drawMainCanvas() {
       selection.bufferHeight * pixelSize
     );
     editorCtx.setLineDash([]); // Reset
+  }
+
+  // 6. Draw Text Tool Preview
+  if (activeTool === 'text' && hoverX >= 0 && hoverY >= 0) {
+    const textStr = textInput.value || '';
+    const fontStr = textFontSelect.value || 'Outfit';
+    const sizeVal = parseInt(textSizeInput.value, 10) || 12;
+    const isBold = textBold.checked;
+    const isItalic = textItalic.checked;
+    const thresholdVal = parseInt(textThreshold.value, 10) || 128;
+    
+    if (textStr) {
+      const textPixels = getTextPixels(textStr, fontStr, sizeVal, isBold, isItalic, thresholdVal);
+      const colors = isGbcMode ? gbcPalettes[currentGbcPaletteIndex] : PALETTE_THEMES[activeTheme];
+      const previewColor = colors[primaryColorIndex];
+      
+      editorCtx.save();
+      editorCtx.globalAlpha = 0.5; // 半透明プレビュー
+      editorCtx.fillStyle = previewColor;
+      
+      for (let ty = 0; ty < textPixels.height; ty++) {
+        for (let tx = 0; tx < textPixels.width; tx++) {
+          if (textPixels.data[ty][tx] === 1) {
+            const canvasX = hoverX + tx;
+            const canvasY = hoverY + ty;
+            if (canvasX >= 0 && canvasX < canvasWidth && canvasY >= 0 && canvasY < canvasHeight) {
+              editorCtx.fillRect(canvasX * pixelSize, canvasY * pixelSize, pixelSize, pixelSize);
+            }
+          }
+        }
+      }
+      
+      // テキスト配置範囲の外枠（エメラルドグリーンの点線）
+      editorCtx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
+      editorCtx.lineWidth = 1;
+      editorCtx.setLineDash([2, 2]);
+      editorCtx.strokeRect(
+        hoverX * pixelSize,
+        hoverY * pixelSize,
+        textPixels.width * pixelSize,
+        textPixels.height * pixelSize
+      );
+      
+      editorCtx.restore();
+    }
   }
 }
 
@@ -1198,6 +1255,50 @@ function executeToolAction(x, y, button) {
       drawMainCanvas();
     }
   }
+}
+
+function getTextPixels(text, font, size, isBold, isItalic, threshold) {
+  const canvas = document.createElement('canvas');
+  const ctx = canvas.getContext('2d');
+  
+  const fontStyle = `${isItalic ? 'italic' : ''} ${isBold ? 'bold' : ''} ${size}px "${font}"`.trim();
+  ctx.font = fontStyle;
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
+  
+  const metrics = ctx.measureText(text);
+  const textWidth = Math.max(1, Math.ceil(metrics.width));
+  const textHeight = Math.max(1, Math.ceil(size * 1.5));
+  
+  canvas.width = textWidth;
+  canvas.height = textHeight;
+  
+  // Re-apply style after resizing
+  ctx.font = fontStyle;
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'left';
+  
+  ctx.fillStyle = '#000000';
+  ctx.fillText(text, 0, 0);
+  
+  const imgData = ctx.getImageData(0, 0, textWidth, textHeight);
+  const pixels = [];
+  
+  for (let y = 0; y < textHeight; y++) {
+    const row = [];
+    for (let x = 0; x < textWidth; x++) {
+      const idx = (y * textWidth + x) * 4;
+      const alpha = imgData.data[idx + 3];
+      row.push(alpha >= threshold ? 1 : 0);
+    }
+    pixels.push(row);
+  }
+  
+  return {
+    width: textWidth,
+    height: textHeight,
+    data: pixels
+  };
 }
 
 // Classic Flood Fill Algorithm
@@ -1822,10 +1923,43 @@ function setupEventListeners() {
     }
     
     if (e.button !== 0 && e.button !== 2) return; // Left (0) and Right (2) clicks only
+    
+    const currentFrame = frames[currentFrameIndex];
+    
+    if (activeTool === 'text') {
+      const textStr = textInput.value || '';
+      const fontStr = textFontSelect.value || 'Outfit';
+      const sizeVal = parseInt(textSizeInput.value, 10) || 12;
+      const isBold = textBold.checked;
+      const isItalic = textItalic.checked;
+      const thresholdVal = parseInt(textThreshold.value, 10) || 128;
+      
+      if (textStr) {
+        const textPixels = getTextPixels(textStr, fontStr, sizeVal, isBold, isItalic, thresholdVal);
+        if (currentFrame) {
+          saveHistory();
+          const colorIndex = (e.button === 2) ? secondaryColorIndex : primaryColorIndex;
+          for (let ty = 0; ty < textPixels.height; ty++) {
+            for (let tx = 0; tx < textPixels.width; tx++) {
+              if (textPixels.data[ty][tx] === 1) {
+                const canvasX = x + tx;
+                const canvasY = y + ty;
+                if (canvasX >= 0 && canvasX < canvasWidth && canvasY >= 0 && canvasY < canvasHeight) {
+                  currentFrame.data[canvasY * canvasWidth + canvasX] = colorIndex;
+                }
+              }
+            }
+          }
+          drawMainCanvas();
+          updateUI();
+        }
+      }
+      return;
+    }
+    
     isDrawing = true;
     drawingButton = e.button;
     
-    const currentFrame = frames[currentFrameIndex];
     if (currentFrame) {
       drawingStartData = new Uint8Array(currentFrame.data);
     }
@@ -1857,6 +1991,21 @@ function setupEventListeners() {
     const mouseY = (e.clientY - rect.top) * scaleY;
     const x = Math.floor(mouseX / pixelSize);
     const y = Math.floor(mouseY / pixelSize);
+    
+    // Update hover coordinates for tools (e.g. text tool preview)
+    if (x >= 0 && x < canvasWidth && y >= 0 && y < canvasHeight) {
+      hoverX = x;
+      hoverY = y;
+      if (activeTool === 'text') {
+        drawMainCanvas();
+      }
+    } else {
+      hoverX = -1;
+      hoverY = -1;
+      if (activeTool === 'text') {
+        drawMainCanvas();
+      }
+    }
     
     if (activeTool === 'select') {
       if (isDraggingFloating) {
@@ -1917,6 +2066,14 @@ function setupEventListeners() {
     }
   });
   
+  editorCanvas.addEventListener('mouseleave', () => {
+    hoverX = -1;
+    hoverY = -1;
+    if (activeTool === 'text') {
+      drawMainCanvas();
+    }
+  });
+  
   // Tools click
   toolPen.addEventListener('click', () => setActiveTool('pen'));
   toolEraser.addEventListener('click', () => setActiveTool('eraser'));
@@ -1928,6 +2085,7 @@ function setupEventListeners() {
   toolEllipse.addEventListener('click', () => setActiveTool('ellipse'));
   toolDither.addEventListener('click', () => setActiveTool('dither'));
   toolShade.addEventListener('click', () => setActiveTool('shade'));
+  toolText.addEventListener('click', () => setActiveTool('text'));
   
   // Brush Size Selection
   document.querySelectorAll('.btn-size-opt').forEach(btn => {
@@ -1955,6 +2113,40 @@ function setupEventListeners() {
       shadingMode = e.target.dataset.mode;
     });
   });
+  // Text Tool Settings events
+  if (textInput) {
+    textInput.addEventListener('input', () => {
+      if (activeTool === 'text') drawMainCanvas();
+    });
+  }
+  if (textFontSelect) {
+    textFontSelect.addEventListener('change', () => {
+      if (activeTool === 'text') drawMainCanvas();
+    });
+  }
+  if (textSizeInput) {
+    textSizeInput.addEventListener('input', () => {
+      if (activeTool === 'text') drawMainCanvas();
+    });
+  }
+  if (textBold) {
+    textBold.addEventListener('change', () => {
+      if (activeTool === 'text') drawMainCanvas();
+    });
+  }
+  if (textItalic) {
+    textItalic.addEventListener('change', () => {
+      if (activeTool === 'text') drawMainCanvas();
+    });
+  }
+  if (textThreshold) {
+    textThreshold.addEventListener('input', (e) => {
+      if (textThresholdVal) {
+        textThresholdVal.innerText = e.target.value;
+      }
+      if (activeTool === 'text') drawMainCanvas();
+    });
+  }
   
   // Actions
   actionFlipH.addEventListener('click', flipHorizontal);
@@ -2140,6 +2332,9 @@ function setupEventListeners() {
         case 'h':
           setActiveTool('shade');
           break;
+        case 't':
+          setActiveTool('text');
+          break;
         case 'n':
           e.preventDefault();
           addFrame();
@@ -2302,6 +2497,7 @@ function setActiveTool(tool) {
   toolEllipse.classList.remove('active');
   toolDither.classList.remove('active');
   toolShade.classList.remove('active');
+  toolText.classList.remove('active');
   
   if (tool === 'pen') toolPen.classList.add('active');
   else if (tool === 'eraser') toolEraser.classList.add('active');
@@ -2313,6 +2509,7 @@ function setActiveTool(tool) {
   else if (tool === 'ellipse') toolEllipse.classList.add('active');
   else if (tool === 'dither') toolDither.classList.add('active');
   else if (tool === 'shade') toolShade.classList.add('active');
+  else if (tool === 'text') toolText.classList.add('active');
   
   // Toggle visibility of tool options
   if (ditherPatternContainer) {
@@ -2320,6 +2517,9 @@ function setActiveTool(tool) {
   }
   if (shadeModeContainer) {
     shadeModeContainer.style.display = (tool === 'shade') ? 'flex' : 'none';
+  }
+  if (textSettingsContainer) {
+    textSettingsContainer.style.display = (tool === 'text') ? 'flex' : 'none';
   }
 }
 

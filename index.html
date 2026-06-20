@@ -98,6 +98,12 @@
               </svg>
               <span>シャドー</span>
             </button>
+            <button id="tool-text" class="btn-tool" title="テキストツール (T)">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M4 7V4h16v3M9 20h6M12 4v16"/>
+              </svg>
+              <span>テキスト</span>
+            </button>
           </div>
         </div>
 
@@ -127,6 +133,39 @@
             <div class="shade-mode-selector">
               <button class="btn-shade-opt active" data-mode="darken">影（暗く）</button>
               <button class="btn-shade-opt" data-mode="lighten">光（明るく）</button>
+            </div>
+          </div>
+          
+          <div id="text-settings-container" class="brush-setting-item" style="display: none; flex-direction: column; gap: 8px; width: 100%;">
+            <span class="setting-label">テキスト設定</span>
+            <div style="display: flex; flex-direction: column; gap: 6px; width: 100%;">
+              <input type="text" id="text-input" value="A" placeholder="テキストを入力" style="width: 100%; padding: 6px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 12px;">
+              <div style="display: flex; gap: 4px; width: 100%;">
+                <select id="text-font-select" style="flex: 1; padding: 4px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 11px;">
+                  <option value="Outfit">Outfit</option>
+                  <option value="Share Tech Mono">Share Tech Mono</option>
+                  <option value="Inter">Inter</option>
+                  <option value="monospace">monospace</option>
+                  <option value="sans-serif">sans-serif</option>
+                  <option value="serif">serif</option>
+                </select>
+                <input type="number" id="text-size-input" value="12" min="6" max="128" style="width: 50px; padding: 4px; border-radius: 4px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 11px;">
+              </div>
+              <div style="display: flex; gap: 10px; font-size: 11px; align-items: center;">
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 3px;">
+                  <input type="checkbox" id="text-bold"> 太字
+                </label>
+                <label style="cursor: pointer; display: flex; align-items: center; gap: 3px;">
+                  <input type="checkbox" id="text-italic"> 斜体
+                </label>
+              </div>
+              <div style="display: flex; flex-direction: column; gap: 2px;">
+                <div style="display: flex; justify-content: space-between; font-size: 10px; color: #888;">
+                  <span>ドット化しきい値</span>
+                  <span id="text-threshold-val">128</span>
+                </div>
+                <input type="range" id="text-threshold" min="1" max="254" value="128" style="width: 100%; height: 4px;">
+              </div>
             </div>
           </div>
         </div>
