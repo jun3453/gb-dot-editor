@@ -16,6 +16,8 @@ let activeTheme = 'classic';
 let primaryColorIndex = 3;   // Left click color (default Black/Dark)
 let secondaryColorIndex = 0; // Right click color (default White/Light)
 let activeTool = 'pen';      // 'pen', 'eraser', 'fill', 'picker', 'text'
+let shapeShear = 0.0;
+let shapeShearDir = 'horizontal';
 let hoverX = -1;
 let hoverY = -1;
 let isDrawing = false;
@@ -223,9 +225,18 @@ const textItalic = document.getElementById('text-italic');
 const textThreshold = document.getElementById('text-threshold');
 const textThresholdVal = document.getElementById('text-threshold-val');
 
+const shapeSettingsContainer = document.getElementById('shape-settings-container');
+const shapeShearInput = document.getElementById('shape-shear');
+const shapeShearVal = document.getElementById('shape-shear-val');
+const shapeShearDirRadios = document.getElementsByName('shape-shear-dir');
+
 const actionFlipH = document.getElementById('action-flip-h');
 const actionFlipV = document.getElementById('action-flip-v');
 const actionRotateCW = document.getElementById('action-rotate-cw');
+const actionShearHRight = document.getElementById('action-shear-h-right');
+const actionShearHLeft = document.getElementById('action-shear-h-left');
+const actionShearVDown = document.getElementById('action-shear-v-down');
+const actionShearVUp = document.getElementById('action-shear-v-up');
 const actionClear = document.getElementById('action-clear');
 
 const actionShiftU = document.getElementById('action-shift-u');
@@ -998,6 +1009,89 @@ function getEllipsePixels(x0, y0, x1, y1) {
   return pixels;
 }
 
+function applyShearToPixels(pixels, shearVal, direction = 'horizontal') {
+  if (pixels.length === 0 || shearVal === 0) return pixels;
+
+  let minVal = Infinity, maxVal = -Infinity;
+  pixels.forEach(pt => {
+    const val = (direction === 'horizontal') ? pt.y : pt.x;
+    if (val < minVal) minVal = val;
+    if (val > maxVal) maxVal = val;
+  });
+  const anchor = (minVal + maxVal) / 2;
+
+  const getShift = (val) => Math.round((val - anchor) * shearVal);
+
+  const sheared = [];
+  const visited = new Set();
+  const addPoint = (x, y) => {
+    const key = `${x},${y}`;
+    if (!visited.has(key)) {
+      visited.add(key);
+      sheared.push({ x, y });
+    }
+  };
+
+  const originalSet = new Set(pixels.map(p => `${p.x},${p.y}`));
+
+  if (direction === 'horizontal') {
+    pixels.forEach(pt => {
+      const dx = getShift(pt.y);
+      const xCurr = pt.x + dx;
+      addPoint(xCurr, pt.y);
+
+      // 下方向への連結性チェック
+      const hasDownConnection = 
+        originalSet.has(`${pt.x},${pt.y + 1}`) ||
+        originalSet.has(`${pt.x - 1},${pt.y + 1}`) ||
+        originalSet.has(`${pt.x + 1},${pt.y + 1}`);
+
+      if (hasDownConnection) {
+        const dxNext = getShift(pt.y + 1);
+        const diff = dxNext - dx;
+        if (diff > 1) {
+          for (let k = 1; k < diff; k++) {
+            addPoint(xCurr + k, pt.y);
+          }
+        } else if (diff < -1) {
+          for (let k = -1; k > diff; k--) {
+            addPoint(xCurr + k, pt.y);
+          }
+        }
+      }
+    });
+  } else {
+    // vertical
+    pixels.forEach(pt => {
+      const dy = getShift(pt.x);
+      const yCurr = pt.y + dy;
+      addPoint(pt.x, yCurr);
+
+      // 右方向への連結性チェック
+      const hasRightConnection = 
+        originalSet.has(`${pt.x + 1},${pt.y}`) ||
+        originalSet.has(`${pt.x + 1},${pt.y - 1}`) ||
+        originalSet.has(`${pt.x + 1},${pt.y + 1}`);
+
+      if (hasRightConnection) {
+        const dyNext = getShift(pt.x + 1);
+        const diff = dyNext - dy;
+        if (diff > 1) {
+          for (let k = 1; k < diff; k++) {
+            addPoint(pt.x, yCurr + k);
+          }
+        } else if (diff < -1) {
+          for (let k = -1; k > diff; k--) {
+            addPoint(pt.x, yCurr + k);
+          }
+        }
+      }
+    });
+  }
+
+  return sheared;
+}
+
 function addPixelToPath(x, y) {
   if (pixelPerfectPath.length > 0) {
     const last = pixelPerfectPath[pixelPerfectPath.length - 1];
@@ -1197,8 +1291,17 @@ function applyShapePreview(x0, y0, x1, y1, shiftPressed) {
     shapePixels = getEllipsePixels(x0, y0, x1, y1);
   }
   
+  if (shapeShear !== 0) {
+    shapePixels = applyShearToPixels(shapePixels, shapeShear, shapeShearDir);
+  }
+  
+  const { minOffset, maxOffset } = getBrushOffsetRange(brushSize);
   shapePixels.forEach(pt => {
-    drawPixelWithSymmetry(pt.x, pt.y, colorIndex);
+    for (let dy = minOffset; dy <= maxOffset; dy++) {
+      for (let dx = minOffset; dx <= maxOffset; dx++) {
+        drawPixelWithSymmetry(pt.x + dx, pt.y + dy, colorIndex);
+      }
+    }
   });
 }
 
@@ -1463,6 +1566,96 @@ function shiftCanvas(dx, dy) {
   currentFrame.data = newData;
   saveHistory();
   updateUI();
+}
+
+function shearHorizontal(direction) {
+  const currentFrame = frames[currentFrameIndex];
+  if (!currentFrame) return;
+
+  let targetData, W, H, isSelection = false;
+
+  if (selection.isFloating && selection.floatingData) {
+    targetData = selection.floatingData;
+    W = selection.bufferWidth;
+    H = selection.bufferHeight;
+    isSelection = true;
+  } else {
+    targetData = currentFrame.data;
+    W = canvasWidth;
+    H = canvasHeight;
+  }
+
+  const newData = new Uint8Array(W * H);
+  const yMid = (H - 1) / 2;
+  const factor = 0.25;
+
+  for (let y = 0; y < H; y++) {
+    let dx = Math.round((y - yMid) * factor);
+    if (direction === 'left') {
+      dx = -dx;
+    }
+
+    for (let x = 0; x < W; x++) {
+      const tx = x + dx;
+      if (tx >= 0 && tx < W) {
+        newData[y * W + tx] = targetData[y * W + x];
+      }
+    }
+  }
+
+  if (isSelection) {
+    selection.floatingData = newData;
+    drawMainCanvas();
+  } else {
+    currentFrame.data = newData;
+    saveHistory();
+    updateUI();
+  }
+}
+
+function shearVertical(direction) {
+  const currentFrame = frames[currentFrameIndex];
+  if (!currentFrame) return;
+
+  let targetData, W, H, isSelection = false;
+
+  if (selection.isFloating && selection.floatingData) {
+    targetData = selection.floatingData;
+    W = selection.bufferWidth;
+    H = selection.bufferHeight;
+    isSelection = true;
+  } else {
+    targetData = currentFrame.data;
+    W = canvasWidth;
+    H = canvasHeight;
+  }
+
+  const newData = new Uint8Array(W * H);
+  const xMid = (W - 1) / 2;
+  const factor = 0.25;
+
+  for (let x = 0; x < W; x++) {
+    let dy = Math.round((x - xMid) * factor);
+    if (direction === 'up') {
+      dy = -dy;
+    }
+
+    for (let y = 0; y < H; y++) {
+      const ty = y + dy;
+      if (ty >= 0 && ty < H) {
+        newData[ty * W + x] = targetData[y * W + x];
+      }
+    }
+  }
+
+  if (isSelection) {
+    selection.floatingData = newData;
+    drawMainCanvas();
+  } else {
+    currentFrame.data = newData;
+    saveHistory();
+    updateUI();
+  }
 }
 
 // --- Import / Export Logic (GBDK2020 C Arrays) ---
@@ -2148,10 +2341,32 @@ function setupEventListeners() {
     });
   }
   
+  if (shapeShearInput) {
+    shapeShearInput.addEventListener('input', (e) => {
+      shapeShear = parseFloat(e.target.value);
+      if (shapeShearVal) {
+        shapeShearVal.innerText = shapeShear.toFixed(1);
+      }
+    });
+  }
+  if (shapeShearDirRadios) {
+    shapeShearDirRadios.forEach(radio => {
+      radio.addEventListener('change', (e) => {
+        if (e.target.checked) {
+          shapeShearDir = e.target.value;
+        }
+      });
+    });
+  }
+  
   // Actions
   actionFlipH.addEventListener('click', flipHorizontal);
   actionFlipV.addEventListener('click', flipVertical);
   actionRotateCW.addEventListener('click', rotateClockwise);
+  actionShearHRight.addEventListener('click', () => shearHorizontal('right'));
+  actionShearHLeft.addEventListener('click', () => shearHorizontal('left'));
+  actionShearVDown.addEventListener('click', () => shearVertical('down'));
+  actionShearVUp.addEventListener('click', () => shearVertical('up'));
   actionClear.addEventListener('click', () => {
     if (confirm("現在のフレームを消去します。よろしいですか？")) {
       clearCanvas();
@@ -2520,6 +2735,9 @@ function setActiveTool(tool) {
   }
   if (textSettingsContainer) {
     textSettingsContainer.style.display = (tool === 'text') ? 'flex' : 'none';
+  }
+  if (shapeSettingsContainer) {
+    shapeSettingsContainer.style.display = (tool === 'line' || tool === 'rect' || tool === 'ellipse') ? 'flex' : 'none';
   }
 }
 

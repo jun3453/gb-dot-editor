@@ -168,6 +168,23 @@
               </div>
             </div>
           </div>
+          
+          <div id="shape-settings-container" class="brush-setting-item" style="display: none; flex-direction: column; gap: 6px; width: 100%;">
+            <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+              <span class="setting-label">図形の傾き (Shear)</span>
+              <span id="shape-shear-val" style="font-size: 11px; color: var(--accent-color); font-weight: bold;">0.0</span>
+            </div>
+            <input type="range" id="shape-shear" min="-2.0" max="2.0" step="0.1" value="0.0" style="width: 100%; height: 4px;">
+            <div style="display: flex; gap: 6px; align-items: center; margin-top: 4px;">
+              <span style="font-size: 10px; color: #888;">方向:</span>
+              <label style="font-size: 11px; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 3px;">
+                <input type="radio" name="shape-shear-dir" value="horizontal" checked style="accent-color: var(--accent-color);"> 横
+              </label>
+              <label style="font-size: 11px; color: #fff; cursor: pointer; display: flex; align-items: center; gap: 3px;">
+                <input type="radio" name="shape-shear-dir" value="vertical" style="accent-color: var(--accent-color);"> 縦
+              </label>
+            </div>
+          </div>
         </div>
 
 
@@ -185,6 +202,22 @@
             <button id="action-rotate-cw" class="btn-action" title="90度右回転">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.5 2v6h-6M21.34 8a10 10 0 1 0-.45 6.13"/></svg>
               <span>右90°回転</span>
+            </button>
+            <button id="action-shear-h-right" class="btn-action" title="右に傾ける（水平シアー）">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M7 20h14L17 4H3z"/></svg>
+              <span>右に傾ける</span>
+            </button>
+            <button id="action-shear-h-left" class="btn-action" title="左に傾ける（水平シアー）">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 20h14L21 4H7z"/></svg>
+              <span>左に傾ける</span>
+            </button>
+            <button id="action-shear-v-down" class="btn-action" title="下に傾ける（垂直シアー）">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 3v14l16 4V7z"/></svg>
+              <span>下に傾ける</span>
+            </button>
+            <button id="action-shear-v-up" class="btn-action" title="上に傾ける（垂直シアー）">
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 7v14l16-4V3z"/></svg>
+              <span>上に傾ける</span>
             </button>
             <button id="action-clear" class="btn-action btn-danger" title="キャンバスをクリア">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2M10 11v6M14 11v6"/></svg>
