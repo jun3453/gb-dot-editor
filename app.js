@@ -237,6 +237,7 @@ const actionShearHRight = document.getElementById('action-shear-h-right');
 const actionShearHLeft = document.getElementById('action-shear-h-left');
 const actionShearVDown = document.getElementById('action-shear-v-down');
 const actionShearVUp = document.getElementById('action-shear-v-up');
+const actionOutline = document.getElementById('action-outline');
 const actionClear = document.getElementById('action-clear');
 
 const actionShiftU = document.getElementById('action-shift-u');
@@ -1499,6 +1500,46 @@ function clearCanvas() {
 }
 
 // --- Transform Operations ---
+function applyOutline() {
+  const currentFrame = frames[currentFrameIndex];
+  if (!currentFrame) return;
+
+  const newData = new Uint8Array(canvasWidth * canvasHeight);
+  const data = currentFrame.data;
+  
+  newData.set(data);
+
+  const dx = [-1, 0, 1, -1, 1, -1, 0, 1];
+  const dy = [-1, -1, -1, 0, 0, 1, 1, 1];
+
+  for (let y = 0; y < canvasHeight; y++) {
+    for (let x = 0; x < canvasWidth; x++) {
+      const idx = y * canvasWidth + x;
+      if (data[idx] === 0) {
+        let hasNeighbor = false;
+        for (let i = 0; i < 8; i++) {
+          const nx = x + dx[i];
+          const ny = y + dy[i];
+          if (nx >= 0 && nx < canvasWidth && ny >= 0 && ny < canvasHeight) {
+            const nidx = ny * canvasWidth + nx;
+            if (data[nidx] !== 0) {
+              hasNeighbor = true;
+              break;
+            }
+          }
+        }
+        if (hasNeighbor) {
+          newData[idx] = primaryColorIndex;
+        }
+      }
+    }
+  }
+
+  currentFrame.data = newData;
+  saveHistory();
+  updateUI();
+}
+
 function flipHorizontal() {
   const currentFrame = frames[currentFrameIndex];
   if (!currentFrame) return;
@@ -2367,6 +2408,9 @@ function setupEventListeners() {
   actionShearHLeft.addEventListener('click', () => shearHorizontal('left'));
   actionShearVDown.addEventListener('click', () => shearVertical('down'));
   actionShearVUp.addEventListener('click', () => shearVertical('up'));
+  if (actionOutline) {
+    actionOutline.addEventListener('click', applyOutline);
+  }
   actionClear.addEventListener('click', () => {
     if (confirm("現在のフレームを消去します。よろしいですか？")) {
       clearCanvas();
